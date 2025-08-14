@@ -38,20 +38,14 @@ if os.environ.get("RUNNING_INSTANCE") == "1":
 os.environ["RUNNING_INSTANCE"] = "1"
 
 # -------------------- CONFIG VIA ENV VARS --------------------
-TOKEN = os.getenv("DISCORD_TOKEN")
-if not TOKEN:
-    print("❌ Erro: variavel DISCORD_TOKEN não encontrada nas env vars.")
-    sys.exit(1)
+print("🔍 Variáveis de ambiente detectadas:")
+for k, v in os.environ.items():
+    print(f"{k} = {v if k != 'DISCORD_TOKEN' else '[OCULTO]'}")
 
-# Convertendo IDs (use os env vars ou defaults se quiser)
-def _int_env(name, default):
-    v = os.environ.get(name)
-    if v is None:
-        return default
-    try:
-        return int(v)
-    except:
-        return default
+TOKEN = os.getenv("DISCORD_TOKEN")
+
+if not TOKEN:
+    raise RuntimeError("❌ Erro: variável DISCORD_TOKEN não encontrada nas env vars.")
 
 GUILD_ID = _int_env("GUILD_ID", 1213316038805164093)
 BOOSTER_ROLE_ID = _int_env("BOOSTER_ROLE_ID", 1248070897697427467)
