@@ -31,10 +31,10 @@ if os.environ.get("RUNNING_INSTANCE") == "1":
 
 os.environ["RUNNING_INSTANCE"] = "1"
 
-TOKEN = "Bot token"
-GUILD_ID = "ID da guilda"
-BOOSTER_ROLE_ID = "ID BOOSTER"   # Cargo oficial booster do Discord
-CUSTOM_BOOSTER_ROLE_ID = "1248070897697427467"  # ID do cargo custom para adicionar/remover
+TOKEN = "DISCORD_TOKEN"
+GUILD_ID = "GUILD_ID"
+BOOSTER_ROLE_ID = "BOOSTER_ROLE_ID"   # Cargo oficial booster do Discord
+CUSTOM_BOOSTER_ROLE_ID = "CUSTOM_BOOSTER_ROLE_ID"  # ID do cargo custom para adicionar/remover
 
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
