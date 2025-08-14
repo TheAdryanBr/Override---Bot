@@ -1,9 +1,4 @@
-[project]
-name = "repl-nix-workspace"
-version = "0.1.0"
-description = "Add your description here"
-requires-python = ">=3.11"
-dependencies = [
-    "discord-py>=2.5.2",
-    "flask>=3.1.1",
-]
+discord.py==2.5.2
+Flask>=3.1.1
+python-dotenv
+PyNaCl
