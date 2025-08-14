@@ -38,7 +38,7 @@ if os.environ.get("RUNNING_INSTANCE") == "1":
 os.environ["RUNNING_INSTANCE"] = "1"
 
 # -------------------- CONFIG VIA ENV VARS --------------------
-TOKEN = os.environ.get("DISCORD_TOKEN")
+TOKEN = os.getenv("DISCORD_TOKEN")
 if not TOKEN:
     print("❌ Erro: variavel DISCORD_TOKEN não encontrada nas env vars.")
     sys.exit(1)
