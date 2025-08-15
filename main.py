@@ -13,22 +13,37 @@ from discord.ext import commands, tasks
 from discord.ui import View, button
 
 from flask import Flask
-from threading import Thread
+import threading
+import os
 
-# -------------------- KEEP ALIVE (Flask) --------------------
-app = Flask('')
+app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Bot está rodando!"
+    return "Bot em execução", 200
 
-def run():
-    # Uso do servidor de desenvolvimento é suficiente para keep-alive no Render
-    app.run(host='0.0.0.0', port=8080)
+def run_bot():
+    # Seu código original do bot aqui
+    import discord
+    from discord.ext import commands
+    
+    TOKEN = os.getenv("DISCORD_TOKEN")
+    bot = commands.Bot(command_prefix="!")
+    
+    @bot.event
+    async def on_ready():
+        print(f"Bot conectado como {bot.user}")
+    
+    bot.run(TOKEN)
 
 def keep_alive():
-    t = Thread(target=run)
+    t = threading.Thread(target=run_bot)
+    t.daemon = True
     t.start()
+
+if __name__ == '__main__':
+    keep_alive()  # Inicia o bot em segundo plano
+    app.run(host='0.0.0.0', port=8080)  # Mantém o web service ativo
 
 # -------------------- MULTI-INSTANCE GUARD --------------------
 if os.environ.get("RUNNING_INSTANCE") == "1":
