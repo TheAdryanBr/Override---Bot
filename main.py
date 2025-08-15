@@ -1,5 +1,3 @@
-Então a parte que você adaptou pode editar nesse código?:
-
 import os
 import sys
 import json
