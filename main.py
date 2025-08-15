@@ -50,33 +50,51 @@ def _int_env(name, default):
         except:
             return default
 
-# -------------------- CONFIG VIA ENV VARS (debug seguro) --------------------
-print("🔍 Variáveis de ambiente detectadas (chaves):")
-for k in sorted(os.environ.keys()):
-    if k == "TOKEN":
-        val = os.environ.get(k)
-        if val:
-            print(f"{k} = [PRESENT] len={len(val)} first4={val[:4]} last4={val[-4:]}")
-        else:
-            print(f"{k} = [MISSING]")
-    else:
-        # mostra apenas a chave para evitar vazar outros segredos
-        print(k)
+# -------------------- leitura robusta do token (Opção A) --------------------
+def _read_secret_file(paths):
+    for p in paths:
+        try:
+            if os.path.isfile(p):
+                with open(p, "r") as f:
+                    s = f.read().strip()
+                    if s:
+                        return s
+        except Exception:
+            pass
+    return None
 
-# leitura do token
-TOKEN = os.getenv("TOKEN")
+# caminhos comuns para Secret Files + fallback local
+_secret_paths = [
+    "/etc/secrets/DISCORD_TOKEN",
+    "/etc/secrets/discord_token",
+    "/run/secrets/discord_token",
+    "/var/run/secrets/discord_token",
+    "./.env.discord"
+]
 
-# verificações extras para ajudar no debug
-if not TOKEN or TOKEN.strip() == "":
-    raise RuntimeError("❌ Erro: variável DISCORD_TOKEN não encontrada nas env vars (ou está vazia). "
-                       "Verifique o painel do Render → Environment → DISCORD_TOKEN e redeploy/restart do serviço.")
+# tenta em env vars primeiro (DISCORD_TOKEN preferencial), depois TOKEN, depois secret files
+TOKEN = os.getenv("DISCORD_TOKEN") or os.getenv("TOKEN") or _read_secret_file(_secret_paths)
 
-# evita o caso em que alguém colocou literalmente "DISCORD_TOKEN" como valor
-if TOKEN == "DISCORD_TOKEN":
-    raise RuntimeError('❌ Erro: o valor de DISCORD_TOKEN parece ser o placeholder "DISCORD_TOKEN". '
-                       'Cole o token real (sem aspas) e redeploy.')
+# limpeza: remove prefixo "Bot " se alguém colou com ele, e trim espaços
+if TOKEN:
+    TOKEN = TOKEN.strip()
+    if TOKEN.lower().startswith("bot "):
+        TOKEN = TOKEN[4:].strip()
 
-# parse de outros ids via env (se presentes)
+# debug seguro — mostra só presença e alguns caracteres não sensíveis
+if TOKEN:
+    try:
+        print(f"DEBUG: token presente. len={len(TOKEN)} first4={TOKEN[:4]} last4={TOKEN[-4:]}")
+    except Exception:
+        print("DEBUG: token presente (erro ao formatar preview).")
+else:
+    raise RuntimeError(
+        "❌ Erro: DISCORD_TOKEN/TOKEN não encontrado nas env vars nem em /etc/secrets. "
+        "Verifique Render → Environment (ou Secret Files) e redeploy."
+    )
+# -------------------- FIM leitura do token --------------------
+
+# -------------------- leitura de outros ids via env --------------------
 GUILD_ID = _int_env("GUILD_ID", 1213316038805164093)
 BOOSTER_ROLE_ID = _int_env("BOOSTER_ROLE_ID", 1248070897697427467)
 CUSTOM_BOOSTER_ROLE_ID = _int_env("CUSTOM_BOOSTER_ROLE_ID", BOOSTER_ROLE_ID)
@@ -353,6 +371,35 @@ class BoosterRankView(View):
             embed = new_view.build_embed()
             await interaction.response.send_message(embed=embed, view=new_view, ephemeral=True)
 
+    @button(label="🏠 Início", style=discord.ButtonStyle.success, custom_id="home")
+    async def home(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.is_personal:
+            self.page = 0
+            self.update_disabled()
+            embed = self.build_embed()
+            await interaction.response.edit_message(embed=embed, view=self)
+        else:
+            new_view = BoosterRankView(self.boosters, is_personal=True)
+            new_view.page = 0
+            new_view.update_disabled()
+            embed = new_view.build_embed()
+            await interaction.response.send_message(embed=embed, view=new_view, ephemeral=True)
+
+    @button(label="➡ Avançar", style=discord.ButtonStyle.secondary, custom_id="next")
+    async def next_page(self, interaction: discord.Interaction, button: discord.ui.Button):
+        new_page = min(len(self.boosters) - self.per_page, self.page + self.per_page)
+        if self.is_personal:
+            self.page = new_page
+            self.update_disabled()
+            embed = self.build_embed()
+            await interaction.response.edit_message(embed=embed, view=self)
+        else:
+            new_view = BoosterRankView(self.boosters, is_personal=True)
+            new_view.page = new_page
+            new_view.update_disabled()
+            embed = new_view.build_embed()
+            await interaction.response.send_message(embed=embed, view=new_view, ephemeral=True)
+
 # -------------------- Comandos / lógica do seu bot (mantive quase tudo) --------------------
 @bot.command()
 async def boosters(ctx):
@@ -393,17 +440,22 @@ async def send_booster_rank(channel, fake=False, tester=None, edit_message=None)
             fake_boosters.append((member, now - timedelta(days=i * 5)))
         boosters = fake_boosters
     else:
-        role = guild.get_role(CUSTOM_BOOSTER_ROLE_ID)
-        boosters = []
-        for member in role.members:
-            user_id_str = str(member.id)
-            start_time_str = boosters_data.get(user_id_str)
-            if start_time_str:
-                start_time = datetime.fromisoformat(start_time_str)
-            else:
-                start_time = member.premium_since or datetime.now(timezone.utc)
-            boosters.append((member, start_time))
-        boosters.sort(key=lambda x: x[1])
+        if not guild:
+            print("send_booster_rank: guild não encontrada (bot.get_guild retornou None)")
+            boosters = []
+        else:
+            role = guild.get_role(CUSTOM_BOOSTER_ROLE_ID)
+            boosters = []
+            if role:
+                for member in role.members:
+                    user_id_str = str(member.id)
+                    start_time_str = boosters_data.get(user_id_str)
+                    if start_time_str:
+                        start_time = datetime.fromisoformat(start_time_str)
+                    else:
+                        start_time = member.premium_since or datetime.now(timezone.utc)
+                    boosters.append((member, start_time))
+                boosters.sort(key=lambda x: x[1])
 
     if not boosters:
         if edit_message is None:
@@ -520,4 +572,3 @@ def start_bot():
 
 if __name__ == "__main__":
     start_bot()
-
