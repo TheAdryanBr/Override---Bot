@@ -53,7 +53,7 @@ def _int_env(name, default):
 # -------------------- CONFIG VIA ENV VARS (debug seguro) --------------------
 print("🔍 Variáveis de ambiente detectadas (chaves):")
 for k in sorted(os.environ.keys()):
-    if k == "DISCORD_TOKEN":
+    if k == "TOKEN":
         val = os.environ.get(k)
         if val:
             print(f"{k} = [PRESENT] len={len(val)} first4={val[:4]} last4={val[-4:]}")
@@ -64,7 +64,7 @@ for k in sorted(os.environ.keys()):
         print(k)
 
 # leitura do token
-TOKEN = os.getenv("DISCORD_TOKEN")
+TOKEN = os.getenv("TOKEN")
 
 # verificações extras para ajudar no debug
 if not TOKEN or TOKEN.strip() == "":
