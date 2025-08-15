@@ -37,16 +37,46 @@ if os.environ.get("RUNNING_INSTANCE") == "1":
 
 os.environ["RUNNING_INSTANCE"] = "1"
 
-# -------------------- CONFIG VIA ENV VARS --------------------
-print("🔍 Variáveis de ambiente detectadas:")
-for k, v in os.environ.items():
-    print(f"{k} = {v if k != 'DISCORD_TOKEN' else '[OCULTO]'}")
+# -------------------- helper para ler ints da env --------------------
+def _int_env(name, default):
+    v = os.environ.get(name)
+    if v is None:
+        return default
+    try:
+        return int(v)
+    except:
+        try:
+            return int(v.strip())
+        except:
+            return default
 
+# -------------------- CONFIG VIA ENV VARS (debug seguro) --------------------
+print("🔍 Variáveis de ambiente detectadas (chaves):")
+for k in sorted(os.environ.keys()):
+    if k == "DISCORD_TOKEN":
+        val = os.environ.get(k)
+        if val:
+            print(f"{k} = [PRESENT] len={len(val)} first4={val[:4]} last4={val[-4:]}")
+        else:
+            print(f"{k} = [MISSING]")
+    else:
+        # mostra apenas a chave para evitar vazar outros segredos
+        print(k)
+
+# leitura do token
 TOKEN = os.getenv("DISCORD_TOKEN")
 
-if not TOKEN:
-    raise RuntimeError("❌ Erro: variável DISCORD_TOKEN não encontrada nas env vars.")
+# verificações extras para ajudar no debug
+if not TOKEN or TOKEN.strip() == "":
+    raise RuntimeError("❌ Erro: variável DISCORD_TOKEN não encontrada nas env vars (ou está vazia). "
+                       "Verifique o painel do Render → Environment → DISCORD_TOKEN e redeploy/restart do serviço.")
 
+# evita o caso em que alguém colocou literalmente "DISCORD_TOKEN" como valor
+if TOKEN == "DISCORD_TOKEN":
+    raise RuntimeError('❌ Erro: o valor de DISCORD_TOKEN parece ser o placeholder "DISCORD_TOKEN". '
+                       'Cole o token real (sem aspas) e redeploy.')
+
+# parse de outros ids via env (se presentes)
 GUILD_ID = _int_env("GUILD_ID", 1213316038805164093)
 BOOSTER_ROLE_ID = _int_env("BOOSTER_ROLE_ID", 1248070897697427467)
 CUSTOM_BOOSTER_ROLE_ID = _int_env("CUSTOM_BOOSTER_ROLE_ID", BOOSTER_ROLE_ID)
@@ -320,35 +350,6 @@ class BoosterRankView(View):
             await interaction.response.edit_message(embed=embed, view=self)
         else:
             new_view = BoosterRankView(boosters, is_personal=True)
-            embed = new_view.build_embed()
-            await interaction.response.send_message(embed=embed, view=new_view, ephemeral=True)
-
-    @button(label="🏠 Início", style=discord.ButtonStyle.success, custom_id="home")
-    async def home(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if self.is_personal:
-            self.page = 0
-            self.update_disabled()
-            embed = self.build_embed()
-            await interaction.response.edit_message(embed=embed, view=self)
-        else:
-            new_view = BoosterRankView(self.boosters, is_personal=True)
-            new_view.page = 0
-            new_view.update_disabled()
-            embed = new_view.build_embed()
-            await interaction.response.send_message(embed=embed, view=new_view, ephemeral=True)
-
-    @button(label="➡ Avançar", style=discord.ButtonStyle.secondary, custom_id="next")
-    async def next_page(self, interaction: discord.Interaction, button: discord.ui.Button):
-        new_page = min(len(self.boosters) - self.per_page, self.page + self.per_page)
-        if self.is_personal:
-            self.page = new_page
-            self.update_disabled()
-            embed = self.build_embed()
-            await interaction.response.edit_message(embed=embed, view=self)
-        else:
-            new_view = BoosterRankView(self.boosters, is_personal=True)
-            new_view.page = new_page
-            new_view.update_disabled()
             embed = new_view.build_embed()
             await interaction.response.send_message(embed=embed, view=new_view, ephemeral=True)
 
