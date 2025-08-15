@@ -1,4 +1,8 @@
+# Forçar uso de PyNaCl para resolver problemas de áudio
 import os
+os.environ["DISCORD_INSTANCE"] = "true"
+import nacl  # Deve ser importado antes do discord
+
 import sys
 import json
 import re
