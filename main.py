@@ -1,36 +1,4 @@
-# shim_audioop_main.py (substitua o seu main.py por este)
-# Forçar uso de PyNaCl para resolver possíveis problemas de áudio (se instalar)
 import os
-os.environ.setdefault("DISCORD_INSTANCE", "true")
-
-# ======= SHIM: cria um módulo 'audioop' falso caso não exista =======
-# Isso evita que a importação do discord.py falhe em ambientes sem o módulo C audioop.
-import types, sys
-
-try:
-    import audioop  # se existir, ótimo
-except Exception:
-    shim = types.ModuleType("audioop")
-    shim.__doc__ = "Shim module for audioop — raises RuntimeError when functions are used."
-    def __getattr__(name):
-        def _missing(*args, **kwargs):
-            raise RuntimeError(
-                "audioop não disponível neste ambiente. "
-                "Funções de áudio/voz do discord irão falhar se forem chamadas."
-            )
-        return _missing
-    # Permite from audioop import * sem crash ao acessar atributos desconhecidos.
-    shim.__getattr__ = __getattr__
-    sys.modules["audioop"] = shim
-# ===================================================================
-
-# tenta importar PyNaCl (opcional)
-try:
-    import nacl  # só necessário se usar voice
-except Exception:
-    # se não existir, não falha aqui — falhará mais tarde quando usar voz
-    pass
-
 import sys
 import json
 import re
@@ -38,7 +6,6 @@ import asyncio
 import traceback
 import time
 import uuid
-import threading
 from datetime import datetime, timezone, timedelta
 
 import discord
@@ -46,71 +13,31 @@ from discord.ext import commands, tasks
 from discord.ui import View, button
 
 from flask import Flask
+from threading import Thread
 
-# ==================== CONFIGURAÇÃO INICIAL ====================
-app = Flask(__name__)
+# -------------------- KEEP ALIVE (Flask) --------------------
+app = Flask('')
 
-# ==================== SISTEMA DE TOKEN (fallbacks) ====================
-def _read_secret_file(paths):
-    for path in paths:
-        try:
-            if os.path.isfile(path):
-                with open(path, "r", encoding="utf-8") as f:
-                    s = f.read().strip()
-                    if s:
-                        return s
-        except Exception:
-            continue
-    return None
+@app.route('/')
+def home():
+    return "Bot está rodando!"
 
-def get_valid_token():
-    secret_paths = [
-        "/etc/secrets/DISCORD_TOKEN",
-        "/etc/secrets/discord_token",
-        "/run/secrets/DISCORD_TOKEN",
-        "./.env.discord",
-        "./.env"
-    ]
-    env_checks = ["DISCORD_TOKEN", "DISGORD_TOKEN", "TOKEN"]
+def run():
+    # Uso do servidor de desenvolvimento é suficiente para keep-alive no Render
+    app.run(host='0.0.0.0', port=8080)
 
-    token = None
-    source = None
-    for ev in env_checks:
-        val = os.getenv(ev)
-        if val:
-            token = val
-            source = f"env:{ev}"
-            break
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
 
-    if not token:
-        val = _read_secret_file(secret_paths)
-        if val:
-            token = val
-            source = f"file:{secret_paths}"
+# -------------------- MULTI-INSTANCE GUARD --------------------
+if os.environ.get("RUNNING_INSTANCE") == "1":
+    print("⚠️ Já existe uma instância ativa deste bot. Encerrando...")
+    sys.exit()
 
-    if not token:
-        raise RuntimeError(
-            "❌ Token não encontrado. Configure DISCORD_TOKEN (ou TOKEN) nas env vars "
-            "ou utilize um secret file. Após atualizar, redeploy/restart."
-        )
+os.environ["RUNNING_INSTANCE"] = "1"
 
-    token = token.strip()
-    if token.lower().startswith("bot "):
-        token = token[4:].strip()
-
-    # checagem simples
-    if not re.match(r"^[A-Za-z0-9\._\-]{20,200}$", token):
-        preview = (token[:4] + "..." + token[-4:]) if len(token) >= 8 else token
-        raise ValueError(f"Token com formato suspeito (preview: {preview}) - gere novo token se necessário. origem={source}")
-
-    masked = token[:4] + "..." + token[-4:]
-    print(f"🔑 Token carregado (preview: {masked}) — origem: {source}")
-    return token
-
-# Pega token (não deixar hardcoded)
-TOKEN = get_valid_token()
-
-# ==================== CONFIG DO BOT ====================
+# -------------------- helper para ler ints da env --------------------
 def _int_env(name, default):
     v = os.environ.get(name)
     if v is None:
@@ -123,33 +50,118 @@ def _int_env(name, default):
         except:
             return default
 
+# -------------------- leitura robusta do token (Opção A) --------------------
+def _read_secret_file(paths):
+    for p in paths:
+        try:
+            if os.path.isfile(p):
+                with open(p, "r") as f:
+                    s = f.read().strip()
+                    if s:
+                        return s
+        except Exception:
+            pass
+    return None
+
+# caminhos comuns para Secret Files + fallback local
+_secret_paths = [
+    "/etc/secrets/DISCORD_TOKEN",
+    "/etc/secrets/discord_token",
+    "/run/secrets/discord_token",
+    "/var/run/secrets/discord_token",
+    "./.env.discord"
+]
+
+# tenta em env vars primeiro (DISCORD_TOKEN preferencial), depois TOKEN, depois secret files
+TOKEN = os.getenv("DISCORD_TOKEN") or os.getenv("TOKEN") or _read_secret_file(_secret_paths)
+
+# limpeza: remove prefixo "Bot " se alguém colou com ele, e trim espaços
+if TOKEN:
+    TOKEN = TOKEN.strip()
+    if TOKEN.lower().startswith("bot "):
+        TOKEN = TOKEN[4:].strip()
+
+# debug seguro — mostra só presença e alguns caracteres não sensíveis
+if TOKEN:
+    try:
+        print(f"DEBUG: token presente. len={len(TOKEN)} first4={TOKEN[:4]} last4={TOKEN[-4:]}")
+    except Exception:
+        print("DEBUG: token presente (erro ao formatar preview).")
+else:
+    raise RuntimeError(
+        "❌ Erro: DISCORD_TOKEN/TOKEN não encontrado nas env vars nem em /etc/secrets. "
+        "Verifique Render → Environment (ou Secret Files) e redeploy."
+    )
+# -------------------- FIM leitura do token --------------------
+
+# -------------------- leitura de outros ids via env --------------------
 GUILD_ID = _int_env("GUILD_ID", 1213316038805164093)
 BOOSTER_ROLE_ID = _int_env("BOOSTER_ROLE_ID", 1248070897697427467)
 CUSTOM_BOOSTER_ROLE_ID = _int_env("CUSTOM_BOOSTER_ROLE_ID", BOOSTER_ROLE_ID)
 
+# -------------------- BOT SETUP --------------------
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+# ID único para identificar a instância atual
 INSTANCE_ID = str(uuid.uuid4())[:8]
 print(f"🚀 Instância iniciada com ID: {INSTANCE_ID}")
 
+# Anti-duplicação
 processing_commands = set()
+
+# locks por canal template para evitar criação simultânea duplicada
 creation_locks = {}
+
+# Mensagem fixa do ranking (objeto discord.Message)
 fixed_booster_message = None
 
 # -------- CONFIG DE CANAIS FIXOS/ CATEGORIAS -------------
 CANAL_FIXO_CONFIG = {
-    1404889040007725107: {"categoria_id": 1213316039350296637, "prefixo_nome": "Call│"},
-    1404886431075401858: {"categoria_id": 1213319157639020564, "prefixo_nome": "♨️|Java│"},
-    1213319477429801011: {"categoria_id": 1213319157639020564, "prefixo_nome": "🪨|Bedrock|"},
-    1213321053196263464: {"categoria_id": 1213319620287664159, "prefixo_nome": "🎧│Call│"},
-    1213322485479637012: {"categoria_id": 1213322073594793994, "prefixo_nome": "👥│Dupla│"},
-    1213322743123148920: {"categoria_id": 1213322073594793994, "prefixo_nome": "👥│Trio│"},
-    1213322826564767776: {"categoria_id": 1213322073594793994, "prefixo_nome": "👥│Squad│"},
-    1216123178548465755: {"categoria_id": 1216123032138154008, "prefixo_nome": "👥│Duo│"},
-    1216123306579595274: {"categoria_id": 1216123032138154008, "prefixo_nome": "👥│Trio│"},
-    1216123421688205322: {"categoria_id": 1216123032138154008, "prefixo_nome": "👥│Team│"},
-    1213533210907246592: {"categoria_id": 1213532914520690739, "prefixo_nome": "🎧│Sala│"},
+    1404889040007725107: {
+        "categoria_id": 1213316039350296637,
+        "prefixo_nome": "Call│"
+    },
+    1404886431075401858: {
+        "categoria_id": 1213319157639020564,
+        "prefixo_nome": "♨️|Java│"
+    },
+    1213319477429801011: {
+        "categoria_id": 1213319157639020564,
+        "prefixo_nome": "🪨|Bedrock|"
+    },
+    1213321053196263464: {
+        "categoria_id": 1213319620287664159,
+        "prefixo_nome": "🎧│Call│"
+    },
+    1213322485479637012: {
+        "categoria_id": 1213322073594793994,
+        "prefixo_nome": "👥│Dupla│"
+    },
+    1213322743123148920: {
+        "categoria_id": 1213322073594793994,
+        "prefixo_nome": "👥│Trio│"
+    },
+    1213322826564767776: {
+        "categoria_id": 1213322073594793994,
+        "prefixo_nome": "👥│Squad│"
+    },
+    1216123178548465755: {
+        "categoria_id": 1216123032138154008,
+        "prefixo_nome": "👥│Duo│"
+    },
+    1216123306579595274: {
+        "categoria_id": 1216123032138154008,
+        "prefixo_nome": "👥│Trio│"
+    },
+    1216123421688205322: {
+        "categoria_id": 1216123032138154008,
+        "prefixo_nome": "👥│Team│"
+    },
+    1213533210907246592: {
+        "categoria_id": 1213532914520690739,
+        "prefixo_nome": "🎧│Sala│"
+    },
 }
 
 # ----------- ARQUIVO PARA SALVAR TEMPO DE BOOSTERS --------------
@@ -158,14 +170,15 @@ DATA_FILE = "boosters_data.json"
 def load_boosters_data():
     if not os.path.isfile(DATA_FILE):
         return {}
-    with open(DATA_FILE, "r", encoding="utf-8") as f:
+    with open(DATA_FILE, "r") as f:
         return json.load(f)
 
 def save_boosters_data(data):
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
+    with open(DATA_FILE, "w") as f:
         json.dump(data, f, indent=4)
 
 boosters_data = load_boosters_data()
+# -----------------------------------------------------------------------
 
 # -------------------- VOICE STATE (criação segura) --------------------
 @bot.event
@@ -288,6 +301,7 @@ class BoosterRankView(View):
         self.update_disabled()
 
     def update_disabled(self):
+        # defensivo: evita index error se botões não existirem por algum motivo
         try:
             self.children[0].disabled = self.page == 0  # previous
             self.children[2].disabled = self.page == 0  # home
@@ -384,9 +398,9 @@ class BoosterRankView(View):
             new_view.page = new_page
             new_view.update_disabled()
             embed = new_view.build_embed()
-            await interaction.response.send_message(embed=new_view.build_embed(), view=new_view, ephemeral=True)
+            await interaction.response.send_message(embed=embed, view=new_view, ephemeral=True)
 
-# -------------------- Comandos / lógica do bot (mantido) --------------------
+# -------------------- Comandos / lógica do seu bot (mantive quase tudo) --------------------
 @bot.command()
 async def boosters(ctx):
     global fixed_booster_message
@@ -426,9 +440,12 @@ async def send_booster_rank(channel, fake=False, tester=None, edit_message=None)
             fake_boosters.append((member, now - timedelta(days=i * 5)))
         boosters = fake_boosters
     else:
-        boosters = []
-        if guild:
+        if not guild:
+            print("send_booster_rank: guild não encontrada (bot.get_guild retornou None)")
+            boosters = []
+        else:
             role = guild.get_role(CUSTOM_BOOSTER_ROLE_ID)
+            boosters = []
             if role:
                 for member in role.members:
                     user_id_str = str(member.id)
@@ -462,6 +479,9 @@ async def on_member_update(before: discord.Member, after: discord.Member):
     if not guild or after.guild.id != GUILD_ID:
         return
 
+    before_roles = set(before.roles)
+    after_roles = set(after.roles)
+
     booster_role = guild.get_role(BOOSTER_ROLE_ID)
     custom_role = guild.get_role(CUSTOM_BOOSTER_ROLE_ID)
     if not booster_role or not custom_role:
@@ -469,25 +489,27 @@ async def on_member_update(before: discord.Member, after: discord.Member):
         return
 
     user_id_str = str(after.id)
-    had_booster = booster_role in before.roles
-    has_booster = booster_role in after.roles
 
     # Ganhou cargo oficial
-    if not had_booster and has_booster:
-        if custom_role not in after.roles:
+    if booster_role not in before_roles and booster_role in after_roles:
+        # Dá cargo custom se não tiver
+        if custom_role not in after_roles:
             await after.add_roles(custom_role, reason="Usuário deu boost, cargo custom adicionado")
             print(f"Cargo custom adicionado a {after.display_name}")
 
+        # Salva data/hora atual no JSON
         boosters_data[user_id_str] = datetime.now(timezone.utc).isoformat()
         save_boosters_data(boosters_data)
         print(f"Data de boost salva para {after.display_name}")
 
     # Perdeu cargo oficial
-    elif had_booster and not has_booster:
-        if custom_role in after.roles:
+    elif booster_role in before_roles and booster_role not in after_roles:
+        # Remove cargo custom se tiver
+        if custom_role in after_roles:
             await after.remove_roles(custom_role, reason="Usuário removeu boost, cargo custom removido")
             print(f"Cargo custom removido de {after.display_name}")
 
+        # Remove do JSON
         if user_id_str in boosters_data:
             del boosters_data[user_id_str]
             save_boosters_data(boosters_data)
@@ -506,6 +528,7 @@ async def boosttime(ctx, member: discord.Member = None):
     formatted_time = format_relative_time(start_time)
     await ctx.send(f"{member.display_name} está boostando {formatted_time}")
 
+# on_ready (mantive a sua lógica de iniciar task e view)
 @bot.event
 async def on_ready():
     print(f"[{INSTANCE_ID}] ✅ Bot online como {bot.user}")
@@ -529,28 +552,23 @@ async def update_booster_message():
     except Exception as e:
         print(f"[{INSTANCE_ID}] ❌ Erro ao atualizar mensagem fixa: {e}")
 
-# ==================== INICIALIZAÇÃO (keep-alive + bot em thread) ====================
-def run_bot():
-    @bot.event
-    async def on_connect():
-        print(f"🌐 Conectado ao Discord (latência: {round(bot.latency*1000)}ms)")
-
-    @bot.event
-    async def on_disconnect():
-        print("⚠️ Desconectado do Discord - Tentando reconectar...")
-
+# --------------- Start / Tratamento de erros (evita loop em 429) ---------------
+def start_bot():
     try:
+        keep_alive()  # inicia keep-alive antes do bot
         bot.run(TOKEN)
     except Exception as e:
-        print(f"❌ Erro no bot: {type(e).__name__} - {e}")
+        print("❌ Erro ao iniciar o bot:", type(e).__name__, "-", e)
+        txt = str(e).lower()
+        if "429" in txt or "too many requests" in txt or "rate limit" in txt or "access denied" in txt:
+            print("\n🚫 DETECTADO: 429 / bloqueio por Cloudflare ou excesso de tentativas.")
+            print("➡ Soluções sugeridas:")
+            print("   1) Regenerar token no Discord Developer Portal.")
+            print("   2) Atualizar DISCORD_TOKEN nas Environment Variables do Render.")
+            print("   3) Se persistir, IP do host pode estar bloqueado — tentar outro host ou contactar Render.")
         traceback.print_exc()
-        os._exit(1)
+        time.sleep(5)
+        sys.exit(1)
 
-if __name__ == '__main__':
-    # Inicia o bot em uma thread separada
-    bot_thread = threading.Thread(target=run_bot, daemon=True)
-    bot_thread.start()
-
-    # Inicia o servidor Flask para keep-alive
-    print("🌍 Iniciando servidor web (Flask)...")
-    app.run(host='0.0.0.0', port=8080, debug=False)
+if __name__ == "__main__":
+    start_bot()
