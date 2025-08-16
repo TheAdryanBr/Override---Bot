@@ -56,11 +56,11 @@ fixed_booster_message = None
 
 # Configuração dos canais fixos + categorias + prefixos para Voice Rooms dinâmicos
 CANAL_FIXO_CONFIG = {
-    1213318370770952192: {
+    1404889040007725107: {
         "categoria_id": 1213316039350296637,
         "prefixo_nome": "Call│"
     },
-    1404889040007725107: {
+    1404886431075401858: {
         "categoria_id": 1213319157639020564,
         "prefixo_nome": "♨️|Java│"
     },
