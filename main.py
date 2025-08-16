@@ -140,7 +140,7 @@ else:
 
 # -------------------- leitura de outros ids via env --------------------
 GUILD_ID = _int_env("GUILD_ID", 1213316038805164093)
-BOOSTER_ROLE_ID = _int_env("BOOSTER_ROLE_ID", 1248070897697427467)
+BOOSTER_ROLE_ID = _int_env("BOOSTER_ROLE_ID", 1406307445306818683)
 CUSTOM_BOOSTER_ROLE_ID = _int_env("CUSTOM_BOOSTER_ROLE_ID", BOOSTER_ROLE_ID)
 
 # -------------------- BOT SETUP --------------------
@@ -162,11 +162,11 @@ fixed_booster_message = None
 
 # -------- CONFIG DE CANAIS FIXOS/ CATEGORIAS -------------
 CANAL_FIXO_CONFIG = {
-    1404889040007725107: {
+    1406308661810171965: {
         "categoria_id": 1213316039350296637,
         "prefixo_nome": "Call│"
     },
-    1404886431075401858: {
+    1404889040007725107: {
         "categoria_id": 1213319157639020564,
         "prefixo_nome": "♨️|Java│"
     },
