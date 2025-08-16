@@ -6,8 +6,52 @@ import asyncio
 import traceback
 import time
 import uuid
+import types
 from datetime import datetime, timezone, timedelta
 
+# ======== STUB PARA `audioop` (se não existir no ambiente) ========
+# Em alguns ambientes Python (containers minimalistas) o módulo audioop
+# não está disponível e causa ModuleNotFoundError ao importar discord.
+# Para permitir o import do pacote discord em ambientes sem áudio, criamos
+# um shim minimalista que fornece funções com assinaturas razoáveis.
+# Observação: se você DESEJA usar voice/audio, este shim não substitui o
+# módulo real — instale um runtime que contenha audioop ou troque o host.
+try:
+    import audioop  # tente o módulo real primeiro
+except Exception:
+    shim = types.ModuleType("audioop")
+    # funções retornam valores neutros compatíveis com assinaturas esperadas
+    def _noop_fragment(fragment, *args, **kwargs):
+        return fragment
+    def _noop_int(*args, **kwargs):
+        return 0
+    def _ratecv(fragment, width, nchannels, state, ratein, rateout):
+        # retorna (fragment, state) - formato aproximado do audioop.ratecv
+        return fragment, state
+    # popula o shim com funções comuns (não exaustivo)
+    shim.rms = _noop_int
+    shim.max = _noop_int
+    shim.min = _noop_int
+    shim.avg = _noop_int
+    shim.add = _noop_fragment
+    shim.bias = _noop_fragment
+    shim.findmax = _noop_int
+    shim.findmin = _noop_int
+    shim.ratecv = _ratecv
+    shim.lin2lin = _noop_fragment
+    shim.lin2ulaw = _noop_fragment
+    shim.ulaw2lin = _noop_fragment
+    shim.lin2mulaw = _noop_fragment
+    shim.mulaw2lin = _noop_fragment
+    shim.tomono = _noop_fragment
+    shim.tostereo = _noop_fragment
+    shim.reverse = _noop_fragment
+    shim.cross = _noop_fragment
+    shim.avgpp = _noop_int
+    # registra no sys.modules para satisfazer imports
+    sys.modules["audioop"] = shim
+
+# agora importa discord (após garantir shim)
 import discord
 from discord.ext import commands, tasks
 from discord.ui import View, button
@@ -37,13 +81,7 @@ if os.environ.get("RUNNING_INSTANCE") == "1":
 
 os.environ["RUNNING_INSTANCE"] = "1"
 
-# -------------------- CONFIG VIA ENV VARS --------------------
-TOKEN = os.environ.get("DISCORD_TOKEN")
-if not TOKEN:
-    print("❌ Erro: variavel DISCORD_TOKEN não encontrada nas env vars.")
-    sys.exit(1)
-
-# Convertendo IDs (use os env vars ou defaults se quiser)
+# -------------------- helper para ler ints da env --------------------
 def _int_env(name, default):
     v = os.environ.get(name)
     if v is None:
@@ -51,8 +89,56 @@ def _int_env(name, default):
     try:
         return int(v)
     except:
-        return default
+        try:
+            return int(v.strip())
+        except:
+            return default
 
+# -------------------- leitura robusta do token (Opção A) --------------------
+def _read_secret_file(paths):
+    for p in paths:
+        try:
+            if os.path.isfile(p):
+                with open(p, "r") as f:
+                    s = f.read().strip()
+                    if s:
+                        return s
+        except Exception:
+            pass
+    return None
+
+# caminhos comuns para Secret Files + fallback local
+_secret_paths = [
+    "/etc/secrets/DISCORD_TOKEN",
+    "/etc/secrets/discord_token",
+    "/run/secrets/discord_token",
+    "/var/run/secrets/discord_token",
+    "./.env.discord"
+]
+
+# tenta em env vars primeiro (DISCORD_TOKEN preferencial), depois TOKEN, depois secret files
+TOKEN = os.getenv("DISCORD_TOKEN") or os.getenv("TOKEN") or _read_secret_file(_secret_paths)
+
+# limpeza: remove prefixo "Bot " se alguém colou com ele, e trim espaços
+if TOKEN:
+    TOKEN = TOKEN.strip()
+    if TOKEN.lower().startswith("bot "):
+        TOKEN = TOKEN[4:].strip()
+
+# debug seguro — mostra só presença e alguns caracteres não sensíveis
+if TOKEN:
+    try:
+        print(f"DEBUG: token presente. len={len(TOKEN)} first4={TOKEN[:4]} last4={TOKEN[-4:]}")
+    except Exception:
+        print("DEBUG: token presente (erro ao formatar preview).")
+else:
+    raise RuntimeError(
+        "❌ Erro: DISCORD_TOKEN/TOKEN não encontrado nas env vars nem em /etc/secrets. "
+        "Verifique Render → Environment (ou Secret Files) e redeploy."
+    )
+# -------------------- FIM leitura do token --------------------
+
+# -------------------- leitura de outros ids via env --------------------
 GUILD_ID = _int_env("GUILD_ID", 1213316038805164093)
 BOOSTER_ROLE_ID = _int_env("BOOSTER_ROLE_ID", 1248070897697427467)
 CUSTOM_BOOSTER_ROLE_ID = _int_env("CUSTOM_BOOSTER_ROLE_ID", BOOSTER_ROLE_ID)
