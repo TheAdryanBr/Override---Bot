@@ -1,21 +1,17 @@
 import os
 import sys
 import json
-import re
-import asyncio
-import traceback
-import time
-import uuid
 from datetime import datetime, timezone, timedelta
-
+import uuid
 import discord
 from discord.ext import commands, tasks
 from discord.ui import View, button
-
+import time
 from flask import Flask
 from threading import Thread
+import re
+import asyncio
 
-# -------------------- KEEP ALIVE (Flask) --------------------
 app = Flask('')
 
 @app.route('/')
@@ -23,83 +19,25 @@ def home():
     return "Bot está rodando!"
 
 def run():
-    # Uso do servidor de desenvolvimento é suficiente para keep-alive no Render
     app.run(host='0.0.0.0', port=8080)
 
 def keep_alive():
     t = Thread(target=run)
     t.start()
 
-# -------------------- MULTI-INSTANCE GUARD --------------------
+
+# Impede múltiplas instâncias no mesmo ambiente
 if os.environ.get("RUNNING_INSTANCE") == "1":
     print("⚠️ Já existe uma instância ativa deste bot. Encerrando...")
     sys.exit()
 
 os.environ["RUNNING_INSTANCE"] = "1"
 
-# -------------------- helper para ler ints da env --------------------
-def _int_env(name, default):
-    v = os.environ.get(name)
-    if v is None:
-        return default
-    try:
-        return int(v)
-    except:
-        try:
-            return int(v.strip())
-        except:
-            return default
+TOKEN = "TOKEN"
+GUILD_ID = 1213316038805164093
+BOOSTER_ROLE_ID = 1248070897697427467   # Cargo oficial booster do Discord
+CUSTOM_BOOSTER_ROLE_ID = 1248070897697427467  # ID do cargo custom para adicionar/remover
 
-# -------------------- leitura robusta do token (Opção A) --------------------
-def _read_secret_file(paths):
-    for p in paths:
-        try:
-            if os.path.isfile(p):
-                with open(p, "r") as f:
-                    s = f.read().strip()
-                    if s:
-                        return s
-        except Exception:
-            pass
-    return None
-
-# caminhos comuns para Secret Files + fallback local
-_secret_paths = [
-    "/etc/secrets/DISCORD_TOKEN",
-    "/etc/secrets/discord_token",
-    "/run/secrets/discord_token",
-    "/var/run/secrets/discord_token",
-    "./.env.discord"
-]
-
-# tenta em env vars primeiro (DISCORD_TOKEN preferencial), depois TOKEN, depois secret files
-TOKEN = os.getenv("DISCORD_TOKEN") or os.getenv("TOKEN") or _read_secret_file(_secret_paths)
-
-# limpeza: remove prefixo "Bot " se alguém colou com ele, e trim espaços
-if TOKEN:
-    TOKEN = TOKEN.strip()
-    if TOKEN.lower().startswith("bot "):
-        TOKEN = TOKEN[4:].strip()
-
-# debug seguro — mostra só presença e alguns caracteres não sensíveis
-if TOKEN:
-    try:
-        print(f"DEBUG: token presente. len={len(TOKEN)} first4={TOKEN[:4]} last4={TOKEN[-4:]}")
-    except Exception:
-        print("DEBUG: token presente (erro ao formatar preview).")
-else:
-    raise RuntimeError(
-        "❌ Erro: DISCORD_TOKEN/TOKEN não encontrado nas env vars nem em /etc/secrets. "
-        "Verifique Render → Environment (ou Secret Files) e redeploy."
-    )
-# -------------------- FIM leitura do token --------------------
-
-# -------------------- leitura de outros ids via env --------------------
-GUILD_ID = _int_env("GUILD_ID", 1213316038805164093)
-BOOSTER_ROLE_ID = _int_env("BOOSTER_ROLE_ID", 1248070897697427467)
-CUSTOM_BOOSTER_ROLE_ID = _int_env("CUSTOM_BOOSTER_ROLE_ID", BOOSTER_ROLE_ID)
-
-# -------------------- BOT SETUP --------------------
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -116,13 +54,13 @@ creation_locks = {}
 # Mensagem fixa do ranking (objeto discord.Message)
 fixed_booster_message = None
 
-# -------- CONFIG DE CANAIS FIXOS/ CATEGORIAS -------------
+# Configuração dos canais fixos + categorias + prefixos para Voice Rooms dinâmicos
 CANAL_FIXO_CONFIG = {
-    1404889040007725107: {
+    1213318370770952192: {
         "categoria_id": 1213316039350296637,
         "prefixo_nome": "Call│"
     },
-    1404886431075401858: {
+    1404889040007725107: {
         "categoria_id": 1213319157639020564,
         "prefixo_nome": "♨️|Java│"
     },
@@ -180,34 +118,34 @@ def save_boosters_data(data):
 boosters_data = load_boosters_data()
 # -----------------------------------------------------------------------
 
-# -------------------- VOICE STATE (criação segura) --------------------
 @bot.event
 async def on_voice_state_update(member, before, after):
+    # Mensagem simples de debug
     try:
         print(f"Voice state update: {member} entrou no canal {after.channel.id if after.channel else 'Nenhum'} (before: {before.channel.id if before.channel else 'Nenhum'})")
     except Exception:
         print("Voice state update: erro ao printar membro/canais")
 
-    # -------------- criação de canal dinâmico ----------------
+    # ------------------ CRIAÇÃO DO CANAL DINÂMICO ------------------
     if after.channel and after.channel.id in CANAL_FIXO_CONFIG:
         config = CANAL_FIXO_CONFIG[after.channel.id]
         guild = member.guild
 
-        # garante CategoryChannel pelo ID
+        # pega a categoria por ID (garante CategoryChannel)
         category = guild.get_channel(config["categoria_id"])
         if not category or not isinstance(category, discord.CategoryChannel):
             print(f"Categoria não encontrada ou não é CategoryChannel (id: {config['categoria_id']})")
         else:
             prefixo = config["prefixo_nome"]
 
-            # lock por template
+            # usa um lock por canal template para evitar race condition
             lock = creation_locks.get(after.channel.id)
             if lock is None:
                 lock = asyncio.Lock()
                 creation_locks[after.channel.id] = lock
 
             async with lock:
-                # canais existentes da categoria com o prefixo
+                # lista canais de voz existentes na mesma categoria que começam com o prefixo
                 canais_existentes = [c for c in category.voice_channels if c.name.startswith(prefixo)]
 
                 # extrai números já usados (ex.: "Call│ 1")
@@ -227,7 +165,7 @@ async def on_voice_state_update(member, before, after):
 
                 nome_canal = f"{prefixo} {numero}"
 
-                # cria o canal na categoria correta
+                # cria o canal (na categoria correta)
                 try:
                     new_channel = await guild.create_voice_channel(
                         name=nome_canal,
@@ -240,11 +178,12 @@ async def on_voice_state_update(member, before, after):
                     print(f"Erro ao criar canal: {e}")
                     new_channel = None
 
-                # tenta posicionar o novo canal logo após o canal template
+                # tenta posicionar o novo canal logo após o canal template (para não ir para o final)
                 if new_channel:
                     try:
                         template_channel = guild.get_channel(after.channel.id)
                         if template_channel:
+                            # coloca a posição logo após o template (pode falhar em alguns casos, por isso try/except)
                             await new_channel.edit(position=(template_channel.position + 1))
                     except Exception as e:
                         print(f"Não foi possível ajustar a posição do canal: {e}")
@@ -256,10 +195,11 @@ async def on_voice_state_update(member, before, after):
                     except Exception as e:
                         print(f"Erro ao mover membro para o novo canal: {e}")
 
-    # -------------- exclusão de canais vazios --------------
+    # ------------------ EXCLUSÃO QUANDO FICA VAZIO ------------------
     if before.channel:
         try:
             categorias_usadas = {conf["categoria_id"] for conf in CANAL_FIXO_CONFIG.values()}
+            # só deleta se o canal estiver dentro das categorias usadas e não for um canal template
             if before.channel.category_id in categorias_usadas and before.channel.id not in CANAL_FIXO_CONFIG:
                 if len(before.channel.members) == 0:
                     try:
@@ -270,7 +210,6 @@ async def on_voice_state_update(member, before, after):
         except Exception as e:
             print(f"Erro na rotina de exclusão: {e}")
 
-# -------------------- Helpers e View (mantive seu código) --------------------
 def format_relative_time(boost_time):
     now = datetime.now(timezone.utc)
     diff = now - boost_time
@@ -301,13 +240,9 @@ class BoosterRankView(View):
         self.update_disabled()
 
     def update_disabled(self):
-        # defensivo: evita index error se botões não existirem por algum motivo
-        try:
-            self.children[0].disabled = self.page == 0  # previous
-            self.children[2].disabled = self.page == 0  # home
-            self.children[3].disabled = self.page + self.per_page >= len(self.boosters)  # next
-        except:
-            pass
+        self.children[0].disabled = self.page == 0  # previous
+        self.children[2].disabled = self.page == 0  # home
+        self.children[3].disabled = self.page + self.per_page >= len(self.boosters)  # next
 
     def build_embed(self):
         embed = discord.Embed(title="🏆 Top Boosters", color=discord.Color.purple())
@@ -322,10 +257,7 @@ class BoosterRankView(View):
                 inline=False
             )
         if self.boosters:
-            try:
-                embed.set_thumbnail(url=self.boosters[0][0].avatar.url if self.boosters[0][0].avatar else self.boosters[0][0].default_avatar.url)
-            except:
-                pass
+            embed.set_thumbnail(url=self.boosters[0][0].avatar.url if self.boosters[0][0].avatar else self.boosters[0][0].default_avatar.url)
 
         embed.set_footer(text=f"Exibindo {start + 1}-{end} de {len(self.boosters)} boosters")
         return embed
@@ -400,7 +332,6 @@ class BoosterRankView(View):
             embed = new_view.build_embed()
             await interaction.response.send_message(embed=embed, view=new_view, ephemeral=True)
 
-# -------------------- Comandos / lógica do seu bot (mantive quase tudo) --------------------
 @bot.command()
 async def boosters(ctx):
     global fixed_booster_message
@@ -440,22 +371,17 @@ async def send_booster_rank(channel, fake=False, tester=None, edit_message=None)
             fake_boosters.append((member, now - timedelta(days=i * 5)))
         boosters = fake_boosters
     else:
-        if not guild:
-            print("send_booster_rank: guild não encontrada (bot.get_guild retornou None)")
-            boosters = []
-        else:
-            role = guild.get_role(CUSTOM_BOOSTER_ROLE_ID)
-            boosters = []
-            if role:
-                for member in role.members:
-                    user_id_str = str(member.id)
-                    start_time_str = boosters_data.get(user_id_str)
-                    if start_time_str:
-                        start_time = datetime.fromisoformat(start_time_str)
-                    else:
-                        start_time = member.premium_since or datetime.now(timezone.utc)
-                    boosters.append((member, start_time))
-                boosters.sort(key=lambda x: x[1])
+        role = guild.get_role(CUSTOM_BOOSTER_ROLE_ID)
+        boosters = []
+        for member in role.members:
+            user_id_str = str(member.id)
+            start_time_str = boosters_data.get(user_id_str)
+            if start_time_str:
+                start_time = datetime.fromisoformat(start_time_str)
+            else:
+                start_time = member.premium_since or datetime.now(timezone.utc)
+            boosters.append((member, start_time))
+        boosters.sort(key=lambda x: x[1])
 
     if not boosters:
         if edit_message is None:
@@ -528,18 +454,11 @@ async def boosttime(ctx, member: discord.Member = None):
     formatted_time = format_relative_time(start_time)
     await ctx.send(f"{member.display_name} está boostando {formatted_time}")
 
-# on_ready (mantive a sua lógica de iniciar task e view)
 @bot.event
 async def on_ready():
     print(f"[{INSTANCE_ID}] ✅ Bot online como {bot.user}")
-    try:
-        bot.add_view(BoosterRankView([]))
-    except Exception:
-        pass
-    try:
-        update_booster_message.start()
-    except Exception as e:
-        print(f"Erro ao iniciar task update_booster_message: {e}")
+    bot.add_view(BoosterRankView([]))
+    update_booster_message.start()
 
 @tasks.loop(seconds=3600)
 async def update_booster_message():
@@ -552,23 +471,5 @@ async def update_booster_message():
     except Exception as e:
         print(f"[{INSTANCE_ID}] ❌ Erro ao atualizar mensagem fixa: {e}")
 
-# --------------- Start / Tratamento de erros (evita loop em 429) ---------------
-def start_bot():
-    try:
-        keep_alive()  # inicia keep-alive antes do bot
-        bot.run(TOKEN)
-    except Exception as e:
-        print("❌ Erro ao iniciar o bot:", type(e).__name__, "-", e)
-        txt = str(e).lower()
-        if "429" in txt or "too many requests" in txt or "rate limit" in txt or "access denied" in txt:
-            print("\n🚫 DETECTADO: 429 / bloqueio por Cloudflare ou excesso de tentativas.")
-            print("➡ Soluções sugeridas:")
-            print("   1) Regenerar token no Discord Developer Portal.")
-            print("   2) Atualizar DISCORD_TOKEN nas Environment Variables do Render.")
-            print("   3) Se persistir, IP do host pode estar bloqueado — tentar outro host ou contactar Render.")
-        traceback.print_exc()
-        time.sleep(5)
-        sys.exit(1)
-
-if __name__ == "__main__":
-    start_bot()
+keep_alive()
+bot.run(TOKEN)
