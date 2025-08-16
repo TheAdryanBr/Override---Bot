@@ -22,53 +22,81 @@ from flask import Flask
 # ==================== CONFIGURAÇÃO INICIAL ====================
 app = Flask(__name__)
 
-# ==================== SISTEMA DE TOKEN ====================
-def get_valid_token():
-    """Obtém e valida o token do Discord com múltiplos fallbacks"""
-    # Tentativas de obter o token em ordem de prioridade
-    token = (
-        os.getenv("DISCORD_TOKEN") or 
-        os.getenv("DISGORD_TOKEN") or 
-        os.getenv("TOKEN") or
-        _read_secret_file([
-            "/etc/secrets/DISCORD_TOKEN",
-            "/run/secrets/DISCORD_TOKEN",
-            "./.env.discord"
-        ])
-    )
-    
-    if not token:
-        raise RuntimeError(
-            "❌ Token não encontrado. Configure DISCORD_TOKEN nas variáveis de ambiente "
-            "ou no arquivo .env.discord"
-        )
-    
-    token = token.strip()
-    if token.lower().startswith("bot "):
-        token = token[4:].strip()
-    
-    # Verificação rigorosa do token
-    if not re.match(r'^[A-Za-z0-9\.\-_]{59,72}$', token):
-        print(f"⚠️ Formato inválido do token! Recebido: {len(token)} caracteres")
-        print(f"Primeiros 4 caracteres: {token[:4]}")
-        raise ValueError("Token inválido - Regenerar no Discord Developer Portal")
-    
-    print(f"🔑 Token validado ({len(token)} caracteres). Iniciando bot...")
-    return token
-
+# ==================== LEITURA DE SECRET FILES (helper) ====================
 def _read_secret_file(paths):
-    """Tenta ler o token de arquivos secretos"""
+    """Tenta ler o token/secret a partir de uma lista de caminhos (file-based secrets)."""
     for path in paths:
         try:
             if os.path.isfile(path):
-                with open(path, "r") as f:
+                with open(path, "r", encoding="utf-8") as f:
                     content = f.read().strip()
                     if content:
-                        return content
+                        return content, path
         except Exception:
             continue
-    return None
+    return None, None
 
+# ==================== SISTEMA DE TOKEN (Opção A) ====================
+def get_valid_token():
+    """Obtém e valida o token do Discord com múltiplos fallbacks (env vars -> secret files)."""
+
+    secret_paths = [
+        "/etc/secrets/DISCORD_TOKEN",
+        "/etc/secrets/discord_token",
+        "/etc/secrets/TOKEN",
+        "/etc/secrets/token",
+        "/run/secrets/DISCORD_TOKEN",
+        "/run/secrets/token",
+        "/var/run/secrets/discord_token",
+        "./.env.discord",
+        "./.env"
+    ]
+
+    # Tentar env vars na ordem de preferência
+    env_checks = ["DISCORD_TOKEN", "DISGORD_TOKEN", "TOKEN"]
+
+    token = None
+    source = None
+
+    for ev in env_checks:
+        val = os.getenv(ev)
+        if val:
+            token = val
+            source = f"env:{ev}"
+            break
+
+    # se não encontrado em env vars, tentar secret files
+    if not token:
+        val, path = _read_secret_file(secret_paths)
+        if val:
+            token = val
+            source = f"file:{path}"
+
+    if not token:
+        raise RuntimeError(
+            "❌ Token não encontrado. Configure DISCORD_TOKEN (ou TOKEN) nas variáveis de ambiente "
+            "ou coloque o token em um Secret File (ex: /etc/secrets/DISCORD_TOKEN) e redeploy."
+        )
+
+    token = token.strip()
+    # Remove prefixo "Bot " se alguém colou com ele
+    if token.lower().startswith("bot "):
+        token = token[4:].strip()
+
+    # Validação simples do formato do token (não 100% garantida, mas ajuda a detectar erros)
+    # Os tokens do bot típicos não contêm espaços e têm comprimento em certa faixa
+    if not re.match(r"^[A-Za-z0-9\._\-]{40,200}$", token):
+        # print masked preview for debugging (não exibir todo o token)
+        preview = (token[:4] + "..." + token[-4:]) if len(token) >= 8 else token
+        print(f"⚠️ Formato suspeito do token (preview): {preview} | source={source}")
+        raise ValueError("Token inválido ou mal formatado. Gere um novo token no Developer Portal.")
+
+    # log seguro — mostrar apenas presença e origem (mascarando)
+    preview = (token[:4] + "..." + token[-4:]) if len(token) >= 8 else "[short]"
+    print(f"🔑 Token carregado com sucesso (preview: {preview}) — origem: {source}")
+    return token
+
+# Obter token (chama a validação)
 TOKEN = get_valid_token()
 
 # ==================== CONFIGURAÇÃO DO BOT ====================
@@ -84,28 +112,7 @@ def home():
 def ping():
     return "pong", 200
 
-# ==================== INICIALIZAÇÃO DO BOT ====================
-def run_bot():
-    """Função para executar o bot em uma thread separada"""
-    @bot.event
-    async def on_connect():
-        print(f"🌐 Conectado ao Discord (Latência: {round(bot.latency*1000)}ms)")
-        
-    @bot.event
-    async def on_disconnect():
-        print("⚠️ Desconectado do Discord - Tentando reconectar...")
-    
-    print("🔄 Iniciando bot Discord...")
-    try:
-        bot.run(TOKEN)
-    except Exception as e:
-        print(f"❌ Erro no bot: {type(e).__name__} - {e}")
-        traceback.print_exc()
-        os._exit(1)  # Força saída em caso de erro crítico
-
-# ==================== SEU CÓDIGO ORIGINAL ADAPTADO ====================
-
-# -------------------- MULTI-INSTANCE GUARD --------------------
+# ==================== MULTI-INSTANCE GUARD =====================
 if os.environ.get("RUNNING_INSTANCE") == "1":
     print("⚠️ Já existe uma instância ativa deste bot. Encerrando...")
     sys.exit()
@@ -197,17 +204,16 @@ DATA_FILE = "boosters_data.json"
 def load_boosters_data():
     if not os.path.isfile(DATA_FILE):
         return {}
-    with open(DATA_FILE, "r") as f:
+    with open(DATA_FILE, "r", encoding="utf-8") as f:
         return json.load(f)
 
 def save_boosters_data(data):
-    with open(DATA_FILE, "w") as f:
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4)
 
 boosters_data = load_boosters_data()
 
 # ==================== EVENTOS DO BOT ====================
-
 @bot.event
 async def on_voice_state_update(member, before, after):
     try:
@@ -233,9 +239,10 @@ async def on_voice_state_update(member, before, after):
             usados = set()
             
             for c in canais_existentes:
-                if match := re.search(rf'^{re.escape(prefixo)}\s*(\d+)$', c.name):
+                m = re.search(rf'^{re.escape(prefixo)}\s*(\d+)$', c.name)
+                if m:
                     try:
-                        usados.add(int(match.group(1)))
+                        usados.add(int(m.group(1)))
                     except:
                         pass
 
@@ -278,7 +285,6 @@ async def on_voice_state_update(member, before, after):
             print(f"Erro na rotina de exclusão: {e}")
 
 # ==================== COMANDOS E VIEWS ====================
-
 def format_relative_time(boost_time):
     now = datetime.now(timezone.utc)
     diff = now - boost_time
@@ -334,8 +340,17 @@ class BoosterRankView(View):
         
         if self.boosters:
             try:
-                embed.set_thumbnail(url=self.boosters[0][0].avatar.url or 
-                                  self.boosters[0][0].default_avatar.url)
+                # avatar pode ser None; usar try/except defensivo
+                thumb = None
+                try:
+                    thumb = self.boosters[0][0].avatar.url
+                except:
+                    try:
+                        thumb = self.boosters[0][0].default_avatar.url
+                    except:
+                        thumb = None
+                if thumb:
+                    embed.set_thumbnail(url=thumb)
             except:
                 pass
 
@@ -377,11 +392,8 @@ class BoosterRankView(View):
             self.update_disabled()
             await interaction.response.edit_message(embed=self.build_embed(), view=self)
         else:
-            await interaction.response.send_message(
-                embed=BoosterRankView(boosters, is_personal=True).build_embed(),
-                view=BoosterRankView(boosters, is_personal=True),
-                ephemeral=True
-            )
+            new_view = BoosterRankView(boosters, is_personal=True)
+            await interaction.response.send_message(embed=new_view.build_embed(), view=new_view, ephemeral=True)
 
     @button(label="🏠 Início", style=discord.ButtonStyle.success, custom_id="home")
     async def home(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -409,6 +421,7 @@ class BoosterRankView(View):
             new_view.update_disabled()
             await interaction.response.send_message(embed=new_view.build_embed(), view=new_view, ephemeral=True)
 
+# -------------------- COMANDOS --------------------
 @bot.command()
 async def boosters(ctx):
     global fixed_booster_message
@@ -547,12 +560,31 @@ async def update_booster_message():
         except Exception as e:
             print(f"[{INSTANCE_ID}] ❌ Erro ao atualizar mensagem fixa: {e}")
 
-# ==================== INICIALIZAÇÃO ====================
+# ==================== EXECUÇÃO (bot em thread + Flask no main thread) ====================
+def run_bot():
+    """Executa o bot — roda em thread separada para manter Flask responsivo no main thread."""
+    @bot.event
+    async def on_connect():
+        # on_connect é chamado quando a conexão for estabelecida
+        print(f"🌐 Conectado ao Discord (latência: {round(bot.latency * 1000)}ms)")
+
+    @bot.event
+    async def on_disconnect():
+        print("⚠️ Desconectado do Discord - Tentando reconectar...")
+
+    print("🔄 Iniciando bot Discord...")
+    try:
+        bot.run(TOKEN)
+    except Exception as e:
+        print(f"❌ Erro no bot: {type(e).__name__} - {e}")
+        traceback.print_exc()
+        os._exit(1)  # encerra se erro crítico
+
 if __name__ == '__main__':
     # Inicia o bot em uma thread separada
     bot_thread = threading.Thread(target=run_bot, daemon=True)
     bot_thread.start()
     
-    # Inicia o servidor Flask
+    # Inicia o servidor Flask (main thread)
     print("🌍 Iniciando servidor web...")
     app.run(host='0.0.0.0', port=8080, debug=False)
