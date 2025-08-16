@@ -1,9 +1,34 @@
-# Forçar uso de PyNaCl (se precisar de áudio)
+# shim_audioop_main.py (substitua o seu main.py por este)
+# Forçar uso de PyNaCl para resolver possíveis problemas de áudio (se instalar)
 import os
 os.environ.setdefault("DISCORD_INSTANCE", "true")
+
+# ======= SHIM: cria um módulo 'audioop' falso caso não exista =======
+# Isso evita que a importação do discord.py falhe em ambientes sem o módulo C audioop.
+import types, sys
+
 try:
-    import nacl  # opcional - caso use voz/áudio
+    import audioop  # se existir, ótimo
 except Exception:
+    shim = types.ModuleType("audioop")
+    shim.__doc__ = "Shim module for audioop — raises RuntimeError when functions are used."
+    def __getattr__(name):
+        def _missing(*args, **kwargs):
+            raise RuntimeError(
+                "audioop não disponível neste ambiente. "
+                "Funções de áudio/voz do discord irão falhar se forem chamadas."
+            )
+        return _missing
+    # Permite from audioop import * sem crash ao acessar atributos desconhecidos.
+    shim.__getattr__ = __getattr__
+    sys.modules["audioop"] = shim
+# ===================================================================
+
+# tenta importar PyNaCl (opcional)
+try:
+    import nacl  # só necessário se usar voice
+except Exception:
+    # se não existir, não falha aqui — falhará mais tarde quando usar voz
     pass
 
 import sys
@@ -22,21 +47,10 @@ from discord.ui import View, button
 
 from flask import Flask
 
-# HTTP client para pre-check
-import aiohttp
-
-# ==================== FLASK (keep-alive) ====================
+# ==================== CONFIGURAÇÃO INICIAL ====================
 app = Flask(__name__)
 
-@app.route('/')
-def home():
-    return "🤖 Bot está rodando!", 200
-
-@app.route('/ping')
-def ping():
-    return "pong", 200
-
-# ==================== HELPERS PARA SECRETS / TOKEN ====================
+# ==================== SISTEMA DE TOKEN (fallbacks) ====================
 def _read_secret_file(paths):
     for path in paths:
         try:
@@ -44,18 +58,16 @@ def _read_secret_file(paths):
                 with open(path, "r", encoding="utf-8") as f:
                     s = f.read().strip()
                     if s:
-                        return s, path
+                        return s
         except Exception:
             continue
-    return None, None
+    return None
 
 def get_valid_token():
     secret_paths = [
         "/etc/secrets/DISCORD_TOKEN",
         "/etc/secrets/discord_token",
-        "/etc/secrets/TOKEN",
         "/run/secrets/DISCORD_TOKEN",
-        "/run/secrets/token",
         "./.env.discord",
         "./.env"
     ]
@@ -71,10 +83,10 @@ def get_valid_token():
             break
 
     if not token:
-        val, path = _read_secret_file(secret_paths)
+        val = _read_secret_file(secret_paths)
         if val:
             token = val
-            source = f"file:{path}"
+            source = f"file:{secret_paths}"
 
     if not token:
         raise RuntimeError(
@@ -86,7 +98,7 @@ def get_valid_token():
     if token.lower().startswith("bot "):
         token = token[4:].strip()
 
-    # Validação simples do formato
+    # checagem simples
     if not re.match(r"^[A-Za-z0-9\._\-]{20,200}$", token):
         preview = (token[:4] + "..." + token[-4:]) if len(token) >= 8 else token
         raise ValueError(f"Token com formato suspeito (preview: {preview}) - gere novo token se necessário. origem={source}")
@@ -95,10 +107,10 @@ def get_valid_token():
     print(f"🔑 Token carregado (preview: {masked}) — origem: {source}")
     return token
 
-# Pega o token (nenhum token fica hardcoded no arquivo)
+# Pega token (não deixar hardcoded)
 TOKEN = get_valid_token()
 
-# ==================== CONFIGURAÇÕES / BOT ====================
+# ==================== CONFIG DO BOT ====================
 def _int_env(name, default):
     v = os.environ.get(name)
     if v is None:
@@ -155,28 +167,7 @@ def save_boosters_data(data):
 
 boosters_data = load_boosters_data()
 
-# -------------------- PRE-CHECK: verifica token / conectividade --------------------
-async def verify_token_and_connectivity(token, timeout=10):
-    url = "https://discord.com/api/v10/users/@me"
-    headers = {"Authorization": f"Bot {token}"}
-    try:
-        async with aiohttp.ClientSession() as sess:
-            async with sess.get(url, headers=headers, timeout=timeout) as resp:
-                text = await resp.text()
-                status = resp.status
-                print(f"[precheck] HTTP {status} from {url}")
-                print(f"[precheck] body preview: {text[:800].replace(chr(10),' ')}")
-                return status, text
-    except asyncio.TimeoutError:
-        print("[precheck] Timeout ao tentar conectar ao Discord.")
-        return None, None
-    except Exception as e:
-        print(f"[precheck] Erro de rede/HTTP: {type(e).__name__} - {e}")
-        return None, None
-
-# -------------------- DEPENDENT CODE: voice handling, views, commands --------------------
-# Mantive seu código original, com pequenas proteções defensivas e sem alterar lógica.
-
+# -------------------- VOICE STATE (criação segura) --------------------
 @bot.event
 async def on_voice_state_update(member, before, after):
     try:
@@ -184,62 +175,75 @@ async def on_voice_state_update(member, before, after):
     except Exception:
         print("Voice state update: erro ao printar membro/canais")
 
-    # Criação de canal dinâmico
+    # -------------- criação de canal dinâmico ----------------
     if after.channel and after.channel.id in CANAL_FIXO_CONFIG:
         config = CANAL_FIXO_CONFIG[after.channel.id]
         guild = member.guild
+
+        # garante CategoryChannel pelo ID
         category = guild.get_channel(config["categoria_id"])
-
         if not category or not isinstance(category, discord.CategoryChannel):
-            print(f"Categoria não encontrada (id: {config['categoria_id']})")
-            return
+            print(f"Categoria não encontrada ou não é CategoryChannel (id: {config['categoria_id']})")
+        else:
+            prefixo = config["prefixo_nome"]
 
-        prefixo = config["prefixo_nome"]
-        lock = creation_locks.setdefault(after.channel.id, asyncio.Lock())
+            # lock por template
+            lock = creation_locks.get(after.channel.id)
+            if lock is None:
+                lock = asyncio.Lock()
+                creation_locks[after.channel.id] = lock
 
-        async with lock:
-            canais_existentes = [c for c in category.voice_channels if c.name.startswith(prefixo)]
-            usados = set()
-            for c in canais_existentes:
-                if match := re.search(rf'^{re.escape(prefixo)}\s*(\d+)$', c.name):
+            async with lock:
+                # canais existentes da categoria com o prefixo
+                canais_existentes = [c for c in category.voice_channels if c.name.startswith(prefixo)]
+
+                # extrai números já usados (ex.: "Call│ 1")
+                usados = set()
+                pattern = rf'^{re.escape(prefixo)}\s*(\d+)$'
+                for c in canais_existentes:
+                    m = re.search(pattern, c.name)
+                    if m:
+                        try:
+                            usados.add(int(m.group(1)))
+                        except:
+                            pass
+
+                numero = 1
+                while numero in usados:
+                    numero += 1
+
+                nome_canal = f"{prefixo} {numero}"
+
+                # cria o canal na categoria correta
+                try:
+                    new_channel = await guild.create_voice_channel(
+                        name=nome_canal,
+                        category=category,
+                        user_limit=5,
+                        reason="Dynamic voice room created"
+                    )
+                    print(f"Canal criado: {new_channel.name} (ID: {new_channel.id})")
+                except Exception as e:
+                    print(f"Erro ao criar canal: {e}")
+                    new_channel = None
+
+                # tenta posicionar o novo canal logo após o canal template
+                if new_channel:
                     try:
-                        usados.add(int(match.group(1)))
-                    except:
-                        pass
+                        template_channel = guild.get_channel(after.channel.id)
+                        if template_channel:
+                            await new_channel.edit(position=(template_channel.position + 1))
+                    except Exception as e:
+                        print(f"Não foi possível ajustar a posição do canal: {e}")
 
-            numero = 1
-            while numero in usados:
-                numero += 1
+                    # move o usuário para o novo canal
+                    try:
+                        await member.move_to(new_channel)
+                        print(f"Movendo {member} para {new_channel.name}")
+                    except Exception as e:
+                        print(f"Erro ao mover membro para o novo canal: {e}")
 
-            nome_canal = f"{prefixo} {numero}"
-
-            try:
-                new_channel = await guild.create_voice_channel(
-                    name=nome_canal,
-                    category=category,
-                    user_limit=5,
-                    reason="Dynamic voice room created"
-                )
-                print(f"Canal criado: {new_channel.name} (ID: {new_channel.id})")
-            except Exception as e:
-                print(f"Erro ao criar canal: {e}")
-                new_channel = None
-
-            if new_channel:
-                try:
-                    template_channel = guild.get_channel(after.channel.id)
-                    if template_channel:
-                        await new_channel.edit(position=(template_channel.position + 1))
-                except Exception as e:
-                    print(f"Não foi possível ajustar a posição do canal: {e}")
-
-                try:
-                    await member.move_to(new_channel)
-                    print(f"Movendo {member} para {new_channel.name}")
-                except Exception as e:
-                    print(f"Erro ao mover membro para o novo canal: {e}")
-
-    # Exclusão de canais vazios
+    # -------------- exclusão de canais vazios --------------
     if before.channel:
         try:
             categorias_usadas = {conf["categoria_id"] for conf in CANAL_FIXO_CONFIG.values()}
@@ -380,9 +384,9 @@ class BoosterRankView(View):
             new_view.page = new_page
             new_view.update_disabled()
             embed = new_view.build_embed()
-            await interaction.response.send_message(embed=embed, view=new_view, ephemeral=True)
+            await interaction.response.send_message(embed=new_view.build_embed(), view=new_view, ephemeral=True)
 
-# -------------------- Comandos / lógica do bot --------------------
+# -------------------- Comandos / lógica do bot (mantido) --------------------
 @bot.command()
 async def boosters(ctx):
     global fixed_booster_message
@@ -502,7 +506,6 @@ async def boosttime(ctx, member: discord.Member = None):
     formatted_time = format_relative_time(start_time)
     await ctx.send(f"{member.display_name} está boostando {formatted_time}")
 
-# on_ready
 @bot.event
 async def on_ready():
     print(f"[{INSTANCE_ID}] ✅ Bot online como {bot.user}")
@@ -526,44 +529,28 @@ async def update_booster_message():
     except Exception as e:
         print(f"[{INSTANCE_ID}] ❌ Erro ao atualizar mensagem fixa: {e}")
 
-# -------------------- STARTUP CONTROLADO: pre-check antes de rodar bot --------------------
-def start_bot_with_precheck():
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        status, body = loop.run_until_complete(verify_token_and_connectivity(TOKEN))
-        if status == 200:
-            print("✅ Pre-check: Token válido e Discord acessível. Iniciando bot.")
-        elif status == 401:
-            print("❌ Pre-check: 401 Unauthorized -> token inválido ou revogado.")
-            print("   -> Regenerar token no Developer Portal e atualizar nas env vars.")
-            sys.exit(1)
-        elif status == 429:
-            print("🚫 Pre-check: 429 Too Many Requests -> possivelmente bloqueio IP/Cloudflare.")
-            print("   -> Tentar outro host ou contactar o provedor.")
-            sys.exit(1)
-        elif status is None:
-            print("❌ Pre-check falhou (sem resposta). Verifique conectividade do host.")
-            sys.exit(1)
-        else:
-            print(f"⚠️ Pre-check retornou HTTP {status}. Verifique o body acima para detalhes.")
-            sys.exit(1)
+# ==================== INICIALIZAÇÃO (keep-alive + bot em thread) ====================
+def run_bot():
+    @bot.event
+    async def on_connect():
+        print(f"🌐 Conectado ao Discord (latência: {round(bot.latency*1000)}ms)")
 
-        # inicia keep-alive (Flask) em thread e roda bot no thread principal
-        keep_thread = threading.Thread(target=lambda: app.run(host='0.0.0.0', port=8080), daemon=True)
-        keep_thread.start()
-        print("🔄 Keep-alive Flask iniciado em thread. Iniciando bot Discord...")
+    @bot.event
+    async def on_disconnect():
+        print("⚠️ Desconectado do Discord - Tentando reconectar...")
+
+    try:
         bot.run(TOKEN)
     except Exception as e:
-        print("❌ Erro ao iniciar o bot:", type(e).__name__, "-", e)
+        print(f"❌ Erro no bot: {type(e).__name__} - {e}")
         traceback.print_exc()
-        time.sleep(3)
-        sys.exit(1)
-    finally:
-        try:
-            loop.close()
-        except:
-            pass
+        os._exit(1)
 
-if __name__ == "__main__":
-    start_bot_with_precheck()
+if __name__ == '__main__':
+    # Inicia o bot em uma thread separada
+    bot_thread = threading.Thread(target=run_bot, daemon=True)
+    bot_thread.start()
+
+    # Inicia o servidor Flask para keep-alive
+    print("🌍 Iniciando servidor web (Flask)...")
+    app.run(host='0.0.0.0', port=8080, debug=False)
