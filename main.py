@@ -1,7 +1,10 @@
-# Forçar uso de PyNaCl para resolver problemas de áudio
+# Forçar uso de PyNaCl (se precisar de áudio)
 import os
-os.environ["DISCORD_INSTANCE"] = "true"
-import nacl  # Deve ser importado antes do discord
+os.environ.setdefault("DISCORD_INSTANCE", "true")
+try:
+    import nacl  # opcional - caso use voz/áudio
+except Exception:
+    pass
 
 import sys
 import json
@@ -19,45 +22,47 @@ from discord.ui import View, button
 
 from flask import Flask
 
-# ==================== CONFIGURAÇÃO INICIAL ====================
+# HTTP client para pre-check
+import aiohttp
+
+# ==================== FLASK (keep-alive) ====================
 app = Flask(__name__)
 
-# ==================== LEITURA DE SECRET FILES (helper) ====================
+@app.route('/')
+def home():
+    return "🤖 Bot está rodando!", 200
+
+@app.route('/ping')
+def ping():
+    return "pong", 200
+
+# ==================== HELPERS PARA SECRETS / TOKEN ====================
 def _read_secret_file(paths):
-    """Tenta ler o token/secret a partir de uma lista de caminhos (file-based secrets)."""
     for path in paths:
         try:
             if os.path.isfile(path):
                 with open(path, "r", encoding="utf-8") as f:
-                    content = f.read().strip()
-                    if content:
-                        return content, path
+                    s = f.read().strip()
+                    if s:
+                        return s, path
         except Exception:
             continue
     return None, None
 
-# ==================== SISTEMA DE TOKEN (Opção A) ====================
 def get_valid_token():
-    """Obtém e valida o token do Discord com múltiplos fallbacks (env vars -> secret files)."""
-
     secret_paths = [
         "/etc/secrets/DISCORD_TOKEN",
         "/etc/secrets/discord_token",
         "/etc/secrets/TOKEN",
-        "/etc/secrets/token",
         "/run/secrets/DISCORD_TOKEN",
         "/run/secrets/token",
-        "/var/run/secrets/discord_token",
         "./.env.discord",
         "./.env"
     ]
-
-    # Tentar env vars na ordem de preferência
     env_checks = ["DISCORD_TOKEN", "DISGORD_TOKEN", "TOKEN"]
 
     token = None
     source = None
-
     for ev in env_checks:
         val = os.getenv(ev)
         if val:
@@ -65,7 +70,6 @@ def get_valid_token():
             source = f"env:{ev}"
             break
 
-    # se não encontrado em env vars, tentar secret files
     if not token:
         val, path = _read_secret_file(secret_paths)
         if val:
@@ -74,52 +78,27 @@ def get_valid_token():
 
     if not token:
         raise RuntimeError(
-            "❌ Token não encontrado. Configure DISCORD_TOKEN (ou TOKEN) nas variáveis de ambiente "
-            "ou coloque o token em um Secret File (ex: /etc/secrets/DISCORD_TOKEN) e redeploy."
+            "❌ Token não encontrado. Configure DISCORD_TOKEN (ou TOKEN) nas env vars "
+            "ou utilize um secret file. Após atualizar, redeploy/restart."
         )
 
     token = token.strip()
-    # Remove prefixo "Bot " se alguém colou com ele
     if token.lower().startswith("bot "):
         token = token[4:].strip()
 
-    # Validação simples do formato do token (não 100% garantida, mas ajuda a detectar erros)
-    # Os tokens do bot típicos não contêm espaços e têm comprimento em certa faixa
-    if not re.match(r"^[A-Za-z0-9\._\-]{40,200}$", token):
-        # print masked preview for debugging (não exibir todo o token)
+    # Validação simples do formato
+    if not re.match(r"^[A-Za-z0-9\._\-]{20,200}$", token):
         preview = (token[:4] + "..." + token[-4:]) if len(token) >= 8 else token
-        print(f"⚠️ Formato suspeito do token (preview): {preview} | source={source}")
-        raise ValueError("Token inválido ou mal formatado. Gere um novo token no Developer Portal.")
+        raise ValueError(f"Token com formato suspeito (preview: {preview}) - gere novo token se necessário. origem={source}")
 
-    # log seguro — mostrar apenas presença e origem (mascarando)
-    preview = (token[:4] + "..." + token[-4:]) if len(token) >= 8 else "[short]"
-    print(f"🔑 Token carregado com sucesso (preview: {preview}) — origem: {source}")
+    masked = token[:4] + "..." + token[-4:]
+    print(f"🔑 Token carregado (preview: {masked}) — origem: {source}")
     return token
 
-# Obter token (chama a validação)
+# Pega o token (nenhum token fica hardcoded no arquivo)
 TOKEN = get_valid_token()
 
-# ==================== CONFIGURAÇÃO DO BOT ====================
-intents = discord.Intents.all()
-bot = commands.Bot(command_prefix="!", intents=intents)
-
-# ==================== FLASK ROUTES (PARA RENDER) ====================
-@app.route('/')
-def home():
-    return "🤖 Bot Discord Online | Status: Ativo", 200
-
-@app.route('/ping')
-def ping():
-    return "pong", 200
-
-# ==================== MULTI-INSTANCE GUARD =====================
-if os.environ.get("RUNNING_INSTANCE") == "1":
-    print("⚠️ Já existe uma instância ativa deste bot. Encerrando...")
-    sys.exit()
-
-os.environ["RUNNING_INSTANCE"] = "1"
-
-# -------------------- helper para ler ints da env --------------------
+# ==================== CONFIGURAÇÕES / BOT ====================
 def _int_env(name, default):
     v = os.environ.get(name)
     if v is None:
@@ -132,70 +111,33 @@ def _int_env(name, default):
         except:
             return default
 
-# -------------------- leitura de outros ids via env --------------------
 GUILD_ID = _int_env("GUILD_ID", 1213316038805164093)
 BOOSTER_ROLE_ID = _int_env("BOOSTER_ROLE_ID", 1248070897697427467)
 CUSTOM_BOOSTER_ROLE_ID = _int_env("CUSTOM_BOOSTER_ROLE_ID", BOOSTER_ROLE_ID)
 
-# ID único para identificar a instância atual
+intents = discord.Intents.all()
+bot = commands.Bot(command_prefix="!", intents=intents)
+
 INSTANCE_ID = str(uuid.uuid4())[:8]
 print(f"🚀 Instância iniciada com ID: {INSTANCE_ID}")
 
-# Anti-duplicação
 processing_commands = set()
-
-# locks por canal template para evitar criação simultânea duplicada
 creation_locks = {}
-
-# Mensagem fixa do ranking (objeto discord.Message)
 fixed_booster_message = None
 
 # -------- CONFIG DE CANAIS FIXOS/ CATEGORIAS -------------
 CANAL_FIXO_CONFIG = {
-    1404889040007725107: {
-        "categoria_id": 1213316039350296637,
-        "prefixo_nome": "Call│"
-    },
-    1404886431075401858: {
-        "categoria_id": 1213319157639020564,
-        "prefixo_nome": "♨️|Java│"
-    },
-    1213319477429801011: {
-        "categoria_id": 1213319157639020564,
-        "prefixo_nome": "🪨|Bedrock|"
-    },
-    1213321053196263464: {
-        "categoria_id": 1213319620287664159,
-        "prefixo_nome": "🎧│Call│"
-    },
-    1213322485479637012: {
-        "categoria_id": 1213322073594793994,
-        "prefixo_nome": "👥│Dupla│"
-    },
-    1213322743123148920: {
-        "categoria_id": 1213322073594793994,
-        "prefixo_nome": "👥│Trio│"
-    },
-    1213322826564767776: {
-        "categoria_id": 1213322073594793994,
-        "prefixo_nome": "👥│Squad│"
-    },
-    1216123178548465755: {
-        "categoria_id": 1216123032138154008,
-        "prefixo_nome": "👥│Duo│"
-    },
-    1216123306579595274: {
-        "categoria_id": 1216123032138154008,
-        "prefixo_nome": "👥│Trio│"
-    },
-    1216123421688205322: {
-        "categoria_id": 1216123032138154008,
-        "prefixo_nome": "👥│Team│"
-    },
-    1213533210907246592: {
-        "categoria_id": 1213532914520690739,
-        "prefixo_nome": "🎧│Sala│"
-    },
+    1404889040007725107: {"categoria_id": 1213316039350296637, "prefixo_nome": "Call│"},
+    1404886431075401858: {"categoria_id": 1213319157639020564, "prefixo_nome": "♨️|Java│"},
+    1213319477429801011: {"categoria_id": 1213319157639020564, "prefixo_nome": "🪨|Bedrock|"},
+    1213321053196263464: {"categoria_id": 1213319620287664159, "prefixo_nome": "🎧│Call│"},
+    1213322485479637012: {"categoria_id": 1213322073594793994, "prefixo_nome": "👥│Dupla│"},
+    1213322743123148920: {"categoria_id": 1213322073594793994, "prefixo_nome": "👥│Trio│"},
+    1213322826564767776: {"categoria_id": 1213322073594793994, "prefixo_nome": "👥│Squad│"},
+    1216123178548465755: {"categoria_id": 1216123032138154008, "prefixo_nome": "👥│Duo│"},
+    1216123306579595274: {"categoria_id": 1216123032138154008, "prefixo_nome": "👥│Trio│"},
+    1216123421688205322: {"categoria_id": 1216123032138154008, "prefixo_nome": "👥│Team│"},
+    1213533210907246592: {"categoria_id": 1213532914520690739, "prefixo_nome": "🎧│Sala│"},
 }
 
 # ----------- ARQUIVO PARA SALVAR TEMPO DE BOOSTERS --------------
@@ -213,7 +155,28 @@ def save_boosters_data(data):
 
 boosters_data = load_boosters_data()
 
-# ==================== EVENTOS DO BOT ====================
+# -------------------- PRE-CHECK: verifica token / conectividade --------------------
+async def verify_token_and_connectivity(token, timeout=10):
+    url = "https://discord.com/api/v10/users/@me"
+    headers = {"Authorization": f"Bot {token}"}
+    try:
+        async with aiohttp.ClientSession() as sess:
+            async with sess.get(url, headers=headers, timeout=timeout) as resp:
+                text = await resp.text()
+                status = resp.status
+                print(f"[precheck] HTTP {status} from {url}")
+                print(f"[precheck] body preview: {text[:800].replace(chr(10),' ')}")
+                return status, text
+    except asyncio.TimeoutError:
+        print("[precheck] Timeout ao tentar conectar ao Discord.")
+        return None, None
+    except Exception as e:
+        print(f"[precheck] Erro de rede/HTTP: {type(e).__name__} - {e}")
+        return None, None
+
+# -------------------- DEPENDENT CODE: voice handling, views, commands --------------------
+# Mantive seu código original, com pequenas proteções defensivas e sem alterar lógica.
+
 @bot.event
 async def on_voice_state_update(member, before, after):
     try:
@@ -226,7 +189,7 @@ async def on_voice_state_update(member, before, after):
         config = CANAL_FIXO_CONFIG[after.channel.id]
         guild = member.guild
         category = guild.get_channel(config["categoria_id"])
-        
+
         if not category or not isinstance(category, discord.CategoryChannel):
             print(f"Categoria não encontrada (id: {config['categoria_id']})")
             return
@@ -237,12 +200,10 @@ async def on_voice_state_update(member, before, after):
         async with lock:
             canais_existentes = [c for c in category.voice_channels if c.name.startswith(prefixo)]
             usados = set()
-            
             for c in canais_existentes:
-                m = re.search(rf'^{re.escape(prefixo)}\s*(\d+)$', c.name)
-                if m:
+                if match := re.search(rf'^{re.escape(prefixo)}\s*(\d+)$', c.name):
                     try:
-                        usados.add(int(m.group(1)))
+                        usados.add(int(match.group(1)))
                     except:
                         pass
 
@@ -260,41 +221,47 @@ async def on_voice_state_update(member, before, after):
                     reason="Dynamic voice room created"
                 )
                 print(f"Canal criado: {new_channel.name} (ID: {new_channel.id})")
-                
+            except Exception as e:
+                print(f"Erro ao criar canal: {e}")
+                new_channel = None
+
+            if new_channel:
                 try:
                     template_channel = guild.get_channel(after.channel.id)
                     if template_channel:
-                        await new_channel.edit(position=template_channel.position + 1)
+                        await new_channel.edit(position=(template_channel.position + 1))
                 except Exception as e:
-                    print(f"Erro ao posicionar canal: {e}")
+                    print(f"Não foi possível ajustar a posição do canal: {e}")
 
-                await member.move_to(new_channel)
-                print(f"Movendo {member} para {new_channel.name}")
-            except Exception as e:
-                print(f"Erro ao criar canal: {e}")
+                try:
+                    await member.move_to(new_channel)
+                    print(f"Movendo {member} para {new_channel.name}")
+                except Exception as e:
+                    print(f"Erro ao mover membro para o novo canal: {e}")
 
     # Exclusão de canais vazios
-    if before.channel and before.channel.id not in CANAL_FIXO_CONFIG:
+    if before.channel:
         try:
             categorias_usadas = {conf["categoria_id"] for conf in CANAL_FIXO_CONFIG.values()}
-            if (before.channel.category_id in categorias_usadas and 
-                len(before.channel.members) == 0):
-                print(f"Canal vazio detectado: {before.channel.name}, deletando...")
-                await before.channel.delete(reason="Dynamic voice room became empty")
+            if before.channel.category_id in categorias_usadas and before.channel.id not in CANAL_FIXO_CONFIG:
+                if len(before.channel.members) == 0:
+                    try:
+                        print(f"Canal vazio detectado: {before.channel.name}, deletando...")
+                        await before.channel.delete(reason="Dynamic voice room became empty")
+                    except Exception as e:
+                        print(f"Erro ao deletar canal vazio: {e}")
         except Exception as e:
             print(f"Erro na rotina de exclusão: {e}")
 
-# ==================== COMANDOS E VIEWS ====================
+# -------------------- Helpers e View (mantive seu código) --------------------
 def format_relative_time(boost_time):
     now = datetime.now(timezone.utc)
     diff = now - boost_time
-    parts = []
-    
     days = diff.days
     hours = diff.seconds // 3600
     minutes = (diff.seconds % 3600) // 60
     seconds = diff.seconds % 60
-    
+    parts = []
     if days > 0:
         parts.append(f"{days} dia{'s' if days > 1 else ''}")
     if hours > 0:
@@ -303,7 +270,6 @@ def format_relative_time(boost_time):
         parts.append(f"{minutes} minuto{'s' if minutes > 1 else ''}")
     if seconds > 0 or not parts:
         parts.append(f"{seconds} segundo{'s' if seconds > 1 else ''}")
-    
     if not parts:
         return "agora"
     return "há " + ", ".join(parts[:-1]) + (" e " + parts[-1] if len(parts) > 1 else "")
@@ -337,20 +303,9 @@ class BoosterRankView(View):
                 value=f"🕒 Boostando desde {formatted_time}",
                 inline=False
             )
-        
         if self.boosters:
             try:
-                # avatar pode ser None; usar try/except defensivo
-                thumb = None
-                try:
-                    thumb = self.boosters[0][0].avatar.url
-                except:
-                    try:
-                        thumb = self.boosters[0][0].default_avatar.url
-                    except:
-                        thumb = None
-                if thumb:
-                    embed.set_thumbnail(url=thumb)
+                embed.set_thumbnail(url=self.boosters[0][0].avatar.url if self.boosters[0][0].avatar else self.boosters[0][0].default_avatar.url)
             except:
                 pass
 
@@ -363,50 +318,54 @@ class BoosterRankView(View):
         if self.is_personal:
             self.page = new_page
             self.update_disabled()
-            await interaction.response.edit_message(embed=self.build_embed(), view=self)
+            embed = self.build_embed()
+            await interaction.response.edit_message(embed=embed, view=self)
         else:
             new_view = BoosterRankView(self.boosters, is_personal=True)
             new_view.page = new_page
             new_view.update_disabled()
-            await interaction.response.send_message(embed=new_view.build_embed(), view=new_view, ephemeral=True)
+            embed = new_view.build_embed()
+            await interaction.response.send_message(embed=embed, view=new_view, ephemeral=True)
 
     @button(label="🔁 Atualizar", style=discord.ButtonStyle.primary, custom_id="refresh")
     async def refresh(self, interaction: discord.Interaction, button: discord.ui.Button):
         guild = interaction.guild
         role = guild.get_role(CUSTOM_BOOSTER_ROLE_ID)
         boosters = []
-        
         if role and role.members:
             for member in role.members:
                 user_id_str = str(member.id)
                 start_time_str = boosters_data.get(user_id_str)
-                start_time = (datetime.fromisoformat(start_time_str) if start_time_str 
-                            else member.premium_since or datetime.now(timezone.utc))
+                if start_time_str:
+                    start_time = datetime.fromisoformat(start_time_str)
+                else:
+                    start_time = member.premium_since or datetime.now(timezone.utc)
                 boosters.append((member, start_time))
-            
             boosters.sort(key=lambda x: x[1])
-        
         if self.is_personal:
             self.boosters = boosters
             self.page = 0
             self.update_disabled()
-            await interaction.response.edit_message(embed=self.build_embed(), view=self)
+            embed = self.build_embed()
+            await interaction.response.edit_message(embed=embed, view=self)
         else:
             new_view = BoosterRankView(boosters, is_personal=True)
-            await interaction.response.send_message(embed=new_view.build_embed(), view=new_view, ephemeral=True)
+            embed = new_view.build_embed()
+            await interaction.response.send_message(embed=embed, view=new_view, ephemeral=True)
 
     @button(label="🏠 Início", style=discord.ButtonStyle.success, custom_id="home")
     async def home(self, interaction: discord.Interaction, button: discord.ui.Button):
-        self.page = 0
-        self.update_disabled()
         if self.is_personal:
-            await interaction.response.edit_message(embed=self.build_embed(), view=self)
+            self.page = 0
+            self.update_disabled()
+            embed = self.build_embed()
+            await interaction.response.edit_message(embed=embed, view=self)
         else:
-            await interaction.response.send_message(
-                embed=BoosterRankView(self.boosters, is_personal=True).build_embed(),
-                view=BoosterRankView(self.boosters, is_personal=True),
-                ephemeral=True
-            )
+            new_view = BoosterRankView(self.boosters, is_personal=True)
+            new_view.page = 0
+            new_view.update_disabled()
+            embed = new_view.build_embed()
+            await interaction.response.send_message(embed=embed, view=new_view, ephemeral=True)
 
     @button(label="➡ Avançar", style=discord.ButtonStyle.secondary, custom_id="next")
     async def next_page(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -414,21 +373,22 @@ class BoosterRankView(View):
         if self.is_personal:
             self.page = new_page
             self.update_disabled()
-            await interaction.response.edit_message(embed=self.build_embed(), view=self)
+            embed = self.build_embed()
+            await interaction.response.edit_message(embed=embed, view=self)
         else:
             new_view = BoosterRankView(self.boosters, is_personal=True)
             new_view.page = new_page
             new_view.update_disabled()
-            await interaction.response.send_message(embed=new_view.build_embed(), view=new_view, ephemeral=True)
+            embed = new_view.build_embed()
+            await interaction.response.send_message(embed=embed, view=new_view, ephemeral=True)
 
-# -------------------- COMANDOS --------------------
+# -------------------- Comandos / lógica do bot --------------------
 @bot.command()
 async def boosters(ctx):
     global fixed_booster_message
     if ctx.author.id in processing_commands:
         print(f"[{INSTANCE_ID}] ❌ Comando ignorado (duplicado): boosters")
         return
-    
     processing_commands.add(ctx.author.id)
     print(f"[{INSTANCE_ID}] ✅ Executando comando: boosters")
 
@@ -436,7 +396,6 @@ async def boosters(ctx):
         await ctx.send("✅ Mensagem de ranking já está ativa!")
     else:
         await send_booster_rank(ctx.channel)
-    
     processing_commands.remove(ctx.author.id)
 
 @bot.command()
@@ -444,7 +403,6 @@ async def testboost(ctx):
     if ctx.author.id in processing_commands:
         print(f"[{INSTANCE_ID}] ❌ Comando ignorado (duplicado): testboost")
         return
-    
     processing_commands.add(ctx.author.id)
     print(f"[{INSTANCE_ID}] ✅ Executando comando: testboost")
     await send_booster_rank(ctx.channel, fake=True, tester=ctx.author)
@@ -471,8 +429,10 @@ async def send_booster_rank(channel, fake=False, tester=None, edit_message=None)
                 for member in role.members:
                     user_id_str = str(member.id)
                     start_time_str = boosters_data.get(user_id_str)
-                    start_time = (datetime.fromisoformat(start_time_str) if start_time_str 
-                                else member.premium_since or datetime.now(timezone.utc))
+                    if start_time_str:
+                        start_time = datetime.fromisoformat(start_time_str)
+                    else:
+                        start_time = member.premium_since or datetime.now(timezone.utc)
                     boosters.append((member, start_time))
                 boosters.sort(key=lambda x: x[1])
 
@@ -485,10 +445,13 @@ async def send_booster_rank(channel, fake=False, tester=None, edit_message=None)
     embed = view.build_embed()
 
     if edit_message:
-        fixed_booster_message = await edit_message.edit(embed=embed, view=view)
+        await edit_message.edit(embed=embed, view=view)
+        fixed_booster_message = edit_message
     else:
-        fixed_booster_message = await channel.send(embed=embed, view=view)
+        msg = await channel.send(embed=embed, view=view)
+        fixed_booster_message = msg
 
+# Evento para adicionar/remover cargo custom e salvar tempo boost
 @bot.event
 async def on_member_update(before: discord.Member, after: discord.Member):
     guild = bot.get_guild(GUILD_ID)
@@ -498,6 +461,7 @@ async def on_member_update(before: discord.Member, after: discord.Member):
     booster_role = guild.get_role(BOOSTER_ROLE_ID)
     custom_role = guild.get_role(CUSTOM_BOOSTER_ROLE_ID)
     if not booster_role or not custom_role:
+        print("Cargo oficial booster ou cargo custom não encontrado")
         return
 
     user_id_str = str(after.id)
@@ -535,16 +499,17 @@ async def boosttime(ctx, member: discord.Member = None):
         return
 
     start_time = datetime.fromisoformat(boosters_data[user_id_str])
-    await ctx.send(f"{member.display_name} está boostando {format_relative_time(start_time)}")
+    formatted_time = format_relative_time(start_time)
+    await ctx.send(f"{member.display_name} está boostando {formatted_time}")
 
+# on_ready
 @bot.event
 async def on_ready():
     print(f"[{INSTANCE_ID}] ✅ Bot online como {bot.user}")
     try:
         bot.add_view(BoosterRankView([]))
-    except:
+    except Exception:
         pass
-    
     try:
         update_booster_message.start()
     except Exception as e:
@@ -553,38 +518,52 @@ async def on_ready():
 @tasks.loop(seconds=3600)
 async def update_booster_message():
     global fixed_booster_message
-    if fixed_booster_message is not None:
-        try:
-            await send_booster_rank(fixed_booster_message.channel, edit_message=fixed_booster_message)
-            print(f"[{INSTANCE_ID}] 🔄 Mensagem fixa do ranking atualizada")
-        except Exception as e:
-            print(f"[{INSTANCE_ID}] ❌ Erro ao atualizar mensagem fixa: {e}")
-
-# ==================== EXECUÇÃO (bot em thread + Flask no main thread) ====================
-def run_bot():
-    """Executa o bot — roda em thread separada para manter Flask responsivo no main thread."""
-    @bot.event
-    async def on_connect():
-        # on_connect é chamado quando a conexão for estabelecida
-        print(f"🌐 Conectado ao Discord (latência: {round(bot.latency * 1000)}ms)")
-
-    @bot.event
-    async def on_disconnect():
-        print("⚠️ Desconectado do Discord - Tentando reconectar...")
-
-    print("🔄 Iniciando bot Discord...")
+    if fixed_booster_message is None:
+        return
     try:
+        await send_booster_rank(fixed_booster_message.channel, edit_message=fixed_booster_message)
+        print(f"[{INSTANCE_ID}] 🔄 Mensagem fixa do ranking atualizada automaticamente")
+    except Exception as e:
+        print(f"[{INSTANCE_ID}] ❌ Erro ao atualizar mensagem fixa: {e}")
+
+# -------------------- STARTUP CONTROLADO: pre-check antes de rodar bot --------------------
+def start_bot_with_precheck():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        status, body = loop.run_until_complete(verify_token_and_connectivity(TOKEN))
+        if status == 200:
+            print("✅ Pre-check: Token válido e Discord acessível. Iniciando bot.")
+        elif status == 401:
+            print("❌ Pre-check: 401 Unauthorized -> token inválido ou revogado.")
+            print("   -> Regenerar token no Developer Portal e atualizar nas env vars.")
+            sys.exit(1)
+        elif status == 429:
+            print("🚫 Pre-check: 429 Too Many Requests -> possivelmente bloqueio IP/Cloudflare.")
+            print("   -> Tentar outro host ou contactar o provedor.")
+            sys.exit(1)
+        elif status is None:
+            print("❌ Pre-check falhou (sem resposta). Verifique conectividade do host.")
+            sys.exit(1)
+        else:
+            print(f"⚠️ Pre-check retornou HTTP {status}. Verifique o body acima para detalhes.")
+            sys.exit(1)
+
+        # inicia keep-alive (Flask) em thread e roda bot no thread principal
+        keep_thread = threading.Thread(target=lambda: app.run(host='0.0.0.0', port=8080), daemon=True)
+        keep_thread.start()
+        print("🔄 Keep-alive Flask iniciado em thread. Iniciando bot Discord...")
         bot.run(TOKEN)
     except Exception as e:
-        print(f"❌ Erro no bot: {type(e).__name__} - {e}")
+        print("❌ Erro ao iniciar o bot:", type(e).__name__, "-", e)
         traceback.print_exc()
-        os._exit(1)  # encerra se erro crítico
+        time.sleep(3)
+        sys.exit(1)
+    finally:
+        try:
+            loop.close()
+        except:
+            pass
 
-if __name__ == '__main__':
-    # Inicia o bot em uma thread separada
-    bot_thread = threading.Thread(target=run_bot, daemon=True)
-    bot_thread.start()
-    
-    # Inicia o servidor Flask (main thread)
-    print("🌍 Iniciando servidor web...")
-    app.run(host='0.0.0.0', port=8080, debug=False)
+if __name__ == "__main__":
+    start_bot_with_precheck()
