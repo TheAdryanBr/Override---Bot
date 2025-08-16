@@ -265,6 +265,7 @@ class BoosterRankView(View):
         self.page = 0
         self.per_page = 5
         self.is_personal = is_personal
+        self.cooldowns = {}
         self.update_disabled()
 
     def update_disabled(self):
@@ -350,6 +351,12 @@ class BoosterRankView(View):
             self.update_disabled()
             await interaction.response.edit_message(embed=self.build_embed(), view=self)
         else:
+            now = time.time()
+            last = self.cooldowns.get(interaction.user.id, 0)
+            if now - last < 5:
+                await interaction.response.defer(ephemeral=True)
+                return
+            self.cooldowns[interaction.user.id] = now
             new_view = BoosterRankView(boosters, is_personal=True)
             await interaction.response.send_message(embed=new_view.build_embed(), view=new_view, ephemeral=True)
 
