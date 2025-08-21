@@ -1,3 +1,4 @@
+# (arquivo main.py — fragmento completo com ranking sem imagem composta)
 import os
 import sys
 import json
@@ -7,7 +8,6 @@ import traceback
 import time
 import uuid
 import types
-import io
 from datetime import datetime, timezone, timedelta
 
 # ======== SHIM PARA `audioop` (ambientes minimalistas) ========
@@ -29,7 +29,6 @@ except Exception:
     shim.tostereo = _noop_fragment
     sys.modules["audioop"] = shim
 
-# agora importa discord (após garantir shim)
 import discord
 from discord.ext import commands, tasks
 from discord.ui import View, button
@@ -37,27 +36,13 @@ from discord.ui import View, button
 from flask import Flask
 from threading import Thread
 
-# --- PIL / requests para gerar a imagem do ranking ---
-try:
-    from PIL import Image, ImageDraw, ImageFont, ImageOps
-except Exception:
-    Image = ImageDraw = ImageFont = ImageOps = None
-
-try:
-    import requests
-except Exception:
-    requests = None
-
 # -------------------- KEEP ALIVE (Flask) --------------------
 app = Flask('')
-
 @app.route('/')
 def home():
     return "Bot está rodando!"
-
 def run_flask():
     app.run(host='0.0.0.0', port=8080)
-
 def keep_alive():
     t = Thread(target=run_flask, daemon=True)
     t.start()
@@ -68,7 +53,7 @@ if os.environ.get("RUNNING_INSTANCE") == "1":
     sys.exit()
 os.environ["RUNNING_INSTANCE"] = "1"
 
-# -------------------- helper para ler ints da env --------------------
+# helpers / env reading
 def _int_env(name, default):
     v = os.environ.get(name)
     if v is None:
@@ -81,7 +66,6 @@ def _int_env(name, default):
         except:
             return default
 
-# -------------------- leitura robusta do token --------------------
 def _read_secret_file(paths):
     for p in paths:
         try:
@@ -108,54 +92,36 @@ if TOKEN:
     if TOKEN.lower().startswith("bot "):
         TOKEN = TOKEN[4:].strip()
 
-if TOKEN:
-    try:
-        print(f"DEBUG: token presente. len={len(TOKEN)} first4={TOKEN[:4]} last4={TOKEN[-4:]}")
-    except Exception:
-        print("DEBUG: token presente (erro ao formatar preview).")
-else:
-    raise RuntimeError(
-        "❌ Erro: DISCORD_TOKEN/TOKEN não encontrado nas env vars nem em /etc/secrets."
-    )
+if not TOKEN:
+    raise RuntimeError("❌ Erro: DISCORD_TOKEN/TOKEN não encontrado nas env vars nem em /etc/secrets.")
 
-# -------------------- leitura de outros ids via env --------------------
 GUILD_ID = _int_env("GUILD_ID", 1213316038805164093)
 BOOSTER_ROLE_ID = _int_env("BOOSTER_ROLE_ID", 1406307445306818683)
 CUSTOM_BOOSTER_ROLE_ID = _int_env("CUSTOM_BOOSTER_ROLE_ID", BOOSTER_ROLE_ID)
 
-# -------------------- BOT SETUP --------------------
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ID único para identificar a instância atual
 INSTANCE_ID = str(uuid.uuid4())[:8]
 print(f"🚀 Instância iniciada com ID: {INSTANCE_ID}")
 
-# Anti-duplicação
 processing_commands = set()
-
-# locks por canal template para evitar criação simultânea duplicada
 creation_locks = {}
-
-# Mensagem fixa do ranking (objeto discord.Message)
 fixed_booster_message = None
 
-# ----------- ARQUIVO PARA SALVAR TEMPO DE BOOSTERS --------------
+# data file
 DATA_FILE = "boosters_data.json"
-
 def load_boosters_data():
     if not os.path.isfile(DATA_FILE):
         return {}
     with open(DATA_FILE, "r") as f:
         return json.load(f)
-
 def save_boosters_data(data):
     with open(DATA_FILE, "w") as f:
         json.dump(data, f, indent=4)
-
 boosters_data = load_boosters_data()
 
-# -------------------- Helpers --------------------
+# helper de tempo
 def format_relative_time(boost_time):
     now = datetime.now(timezone.utc)
     diff = now - boost_time
@@ -174,105 +140,38 @@ def format_relative_time(boost_time):
         parts.append(f"{seconds} segundo{'s' if seconds > 1 else ''}")
     return "há " + ", ".join(parts[:-1]) + (" e " + parts[-1] if len(parts) > 1 else parts[0])
 
-# -------------------- GERA IMAGEM DO RANKING (PIL usando textbbox) --------------------
-def generate_ranking_image(boosters, page=0, per_page=5, width=900, row_height=80):
+# ---------- Novo: cria múltiplos embeds (um por usuário) ----------
+def build_embeds_for_page(boosters, page=0, per_page=5, title_prefix="🏆 Top Boosters"):
     """
-    Gera uma imagem PNG em memória contendo o ranking com avatar ao lado do nome.
-    Retorna um BytesIO pronto para ser enviado como arquivo.
-    Usa draw.textbbox(...) para compatibilidade com Pillow 10+.
+    Retorna uma list[discord.Embed] contendo até per_page embeds,
+    cada embed representa um usuário com seu thumbnail (avatar) e descrição.
     """
-    if Image is None or ImageDraw is None or ImageFont is None:
-        return None
-
-    # configurações visuais
-    margin = 16
-    avatar_size = 56
-    gap = 12
-    font_size_name = 18
-    font_size_meta = 14
-
-    try:
-        name_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size_name)
-        meta_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", font_size_meta)
-    except Exception:
-        name_font = ImageFont.load_default()
-        meta_font = ImageFont.load_default()
-
+    embeds = []
     start = page
     end = min(page + per_page, len(boosters))
-    rows = max(1, end - start)
-    height = margin * 2 + rows * row_height
-
-    img = Image.new("RGBA", (width, max(height, 120)), (255, 255, 255, 255))
-    draw = ImageDraw.Draw(img)
-
-    y = margin
-    for i, (member, boost_time) in enumerate(boosters[start:end], start=1 + page):
-        # avatar
-        avatar_url = None
-        try:
-            if hasattr(member, 'display_avatar'):
-                avatar_url = member.display_avatar.url
-            elif getattr(member, 'avatar', None):
-                avatar_url = member.avatar.url
-        except Exception:
-            avatar_url = None
-
-        avatar_img = None
-        if avatar_url and requests:
-            try:
-                r = requests.get(avatar_url, timeout=6)
-                if r.status_code == 200:
-                    avatar_img = Image.open(io.BytesIO(r.content)).convert("RGBA")
-            except Exception:
-                avatar_img = None
-
-        if not avatar_img:
-            # placeholder circle
-            avatar_img = Image.new("RGBA", (avatar_size, avatar_size), (200, 200, 200, 255))
-
-        # crop/fit avatar to square and circle mask
-        avatar_img = ImageOps.fit(avatar_img, (avatar_size, avatar_size))
-        mask = Image.new("L", (avatar_size, avatar_size), 0)
-        mask_draw = ImageDraw.Draw(mask)
-        mask_draw.ellipse((0, 0, avatar_size, avatar_size), fill=255)
-        img.paste(avatar_img, (margin, y + (row_height - avatar_size)//2), mask)
-
-        # textos: name + meta
-        name = getattr(member, 'display_name', getattr(member, 'name', f"User {getattr(member, 'id', '???')}"))
+    # Se quiser título geral na primeira embed:
+    for idx, (member, boost_time) in enumerate(boosters[start:end], start=1 + page):
+        display_name = getattr(member, "display_name", getattr(member, "name", f"User {getattr(member,'id','???')}"))
         formatted_time = format_relative_time(boost_time)
-        name_x = margin + avatar_size + gap
-        name_y = y + 8
+        embed = discord.Embed(title=f"{idx}. {display_name}", description=f"🕒 Boostando desde {formatted_time}", color=discord.Color.purple())
+        # thumbnail (avatar)
+        try:
+            avatar_url = None
+            if hasattr(member, "display_avatar"):
+                avatar_url = member.display_avatar.url
+            elif getattr(member, "avatar", None):
+                avatar_url = member.avatar.url
+            if avatar_url:
+                embed.set_thumbnail(url=avatar_url)
+        except Exception:
+            pass
+        # footer apenas na PRIMEIRA embed para evitar repetição visual (opcional)
+        if idx == 1 + page:
+            embed.set_footer(text=f"Exibindo {start + 1}-{end} de {len(boosters)} boosters")
+        embeds.append(embed)
+    return embeds
 
-        # largura / altura usando textbbox
-        bbox = draw.textbbox((0, 0), name, font=name_font)
-        name_h = bbox[3] - bbox[1]
-        draw.text((name_x, name_y), name, font=name_font, fill=(32, 32, 32))
-
-        meta_text = f"🕒 {formatted_time}"
-        bbox_m = draw.textbbox((0, 0), meta_text, font=meta_font)
-        meta_h = bbox_m[3] - bbox_m[1]
-        draw.text((name_x, name_y + name_h + 6), meta_text, font=meta_font, fill=(100, 100, 100))
-
-        # número da colocação à esquerda do avatar
-        rank_text = f"{i}."
-        bbox_r = draw.textbbox((0, 0), rank_text, font=name_font)
-        r_w = bbox_r[2] - bbox_r[0]
-        draw.text((margin - r_w - 8, name_y), rank_text, font=name_font, fill=(50, 50, 50))
-
-        y += row_height
-
-    # footer
-    footer_text = f"Exibindo {start + 1}-{end} de {len(boosters)} boosters"
-    bbox_f = draw.textbbox((0, 0), footer_text, font=meta_font)
-    draw.text((margin, img.height - margin - (bbox_f[3] - bbox_f[1])), footer_text, font=meta_font, fill=(120, 120, 120))
-
-    out = io.BytesIO()
-    img.save(out, format="PNG")
-    out.seek(0)
-    return out
-
-# -------------------- View simplificada (botões) --------------------
+# -------------------- View (botões) --------------------
 class BoosterRankView(View):
     def __init__(self, boosters, is_personal=False):
         super().__init__(timeout=None)
@@ -294,28 +193,20 @@ class BoosterRankView(View):
         except Exception:
             pass
 
-    def build_embed(self):
-        # embed minimal: imagem gerada conterá o layout (avatars + nomes)
-        embed = discord.Embed(title="🏆 Top Boosters", color=discord.Color.purple())
-        start = self.page
-        end = min(self.page + self.per_page, len(self.boosters))
-        embed.set_footer(text=f"Exibindo {start + 1}-{end} de {len(self.boosters)} boosters")
-        # imagem será anexada como attachment "ranking.png"
-        embed.set_image(url="attachment://ranking.png")
-        return embed
-
     @button(label="⬅ Voltar", style=discord.ButtonStyle.secondary, custom_id="previous")
     async def previous(self, interaction: discord.Interaction, button: discord.ui.Button):
         new_page = max(0, self.page - self.per_page)
         if self.is_personal:
             self.page = new_page
             self.update_disabled()
-            await interaction.response.edit_message(embed=self.build_embed(), view=self)
+            embeds = build_embeds_for_page(self.boosters, page=self.page, per_page=self.per_page)
+            await interaction.response.edit_message(embeds=embeds, view=self)
         else:
             new_view = BoosterRankView(self.boosters, is_personal=True)
             new_view.page = new_page
             new_view.update_disabled()
-            await interaction.response.send_message(embed=new_view.build_embed(), view=new_view, ephemeral=True)
+            embeds = build_embeds_for_page(self.boosters, page=new_page, per_page=new_view.per_page)
+            await interaction.response.send_message(embeds=embeds, view=new_view, ephemeral=True)
 
     @button(label="🔁 Atualizar", style=discord.ButtonStyle.primary, custom_id="refresh")
     async def refresh(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -333,26 +224,24 @@ class BoosterRankView(View):
             self.boosters = boosters
             self.page = 0
             self.update_disabled()
-            # gera nova imagem para edição em-contexto
-            image_io = generate_ranking_image(self.boosters, page=self.page, per_page=self.per_page)
-            if image_io:
-                file = discord.File(image_io, filename="ranking.png")
-                await interaction.response.edit_message(embed=self.build_embed(), view=self, attachments=[file])
-            else:
-                await interaction.response.edit_message(embed=self.build_embed(), view=self)
+            embeds = build_embeds_for_page(self.boosters, page=self.page, per_page=self.per_page)
+            await interaction.response.edit_message(embeds=embeds, view=self)
         else:
             new_view = BoosterRankView(boosters, is_personal=True)
-            await interaction.response.send_message(embed=new_view.build_embed(), view=new_view, ephemeral=True)
+            embeds = build_embeds_for_page(boosters, page=0, per_page=new_view.per_page)
+            await interaction.response.send_message(embeds=embeds, view=new_view, ephemeral=True)
 
     @button(label="🏠 Início", style=discord.ButtonStyle.success, custom_id="home")
     async def home(self, interaction: discord.Interaction, button: discord.ui.Button):
         if self.is_personal:
             self.page = 0
             self.update_disabled()
-            await interaction.response.edit_message(embed=self.build_embed(), view=self)
+            embeds = build_embeds_for_page(self.boosters, page=0, per_page=self.per_page)
+            await interaction.response.edit_message(embeds=embeds, view=self)
         else:
             new_view = BoosterRankView(self.boosters, is_personal=True)
-            await interaction.response.send_message(embed=new_view.build_embed(), view=new_view, ephemeral=True)
+            embeds = build_embeds_for_page(self.boosters, page=0, per_page=new_view.per_page)
+            await interaction.response.send_message(embeds=embeds, view=new_view, ephemeral=True)
 
     @button(label="➡ Avançar", style=discord.ButtonStyle.secondary, custom_id="next")
     async def next_page(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -361,12 +250,14 @@ class BoosterRankView(View):
         if self.is_personal:
             self.page = new_page
             self.update_disabled()
-            await interaction.response.edit_message(embed=self.build_embed(), view=self)
+            embeds = build_embeds_for_page(self.boosters, page=self.page, per_page=self.per_page)
+            await interaction.response.edit_message(embeds=embeds, view=self)
         else:
             new_view = BoosterRankView(self.boosters, is_personal=True)
             new_view.page = new_page
             new_view.update_disabled()
-            await interaction.response.send_message(embed=new_view.build_embed(), view=new_view, ephemeral=True)
+            embeds = build_embeds_for_page(self.boosters, page=new_page, per_page=new_view.per_page)
+            await interaction.response.send_message(embeds=embeds, view=new_view, ephemeral=True)
 
 # -------------------- Comandos / lógica do ranking --------------------
 @bot.command()
@@ -397,8 +288,8 @@ async def testboost(ctx):
 
 async def send_booster_rank(channel, fake=False, tester=None, edit_message=None, page=0, per_page=5):
     """
-    Gera o ranking, cria uma imagem com avatars ao lado dos nomes e envia UMA embed com a imagem anexada.
-    Se edit_message for fornecida, tenta deletar a mensagem antiga e enviar uma nova (para atualizar attachments).
+    Agora envia N embeds por página (cada embed tem thumbnail = avatar do user).
+    Se edit_message for fornecida, tentamos deletar a antiga e enviar nova (para atualizar).
     """
     global fixed_booster_message
     guild = bot.get_guild(GUILD_ID)
@@ -433,37 +324,24 @@ async def send_booster_rank(channel, fake=False, tester=None, edit_message=None,
         return
 
     view = BoosterRankView(boosters, is_personal=False)
-    embed = view.build_embed()
-
-    # gera imagem do ranking
-    image_io = generate_ranking_image(boosters, page=page, per_page=per_page)
+    embeds = build_embeds_for_page(boosters, page=page, per_page=per_page)
 
     try:
-        # se vamos editar uma mensagem existente com attachment, delete & re-send (attachments não atualizam via edit)
         if edit_message:
+            # delete & resend for attachments consistency; here no attachments so we can edit
             try:
-                await edit_message.delete()
+                # prefer editing the message's embeds if allowed
+                await edit_message.edit(embeds=embeds, view=view)
+                fixed_booster_message = edit_message
             except Exception:
-                # se não puder deletar, tentamos edit simples (sem imagem)
+                # fallback: delete and send new
                 try:
-                    await edit_message.edit(embed=embed, view=view)
-                    fixed_booster_message = edit_message
-                    return
+                    await edit_message.delete()
                 except Exception:
                     pass
-            # envia nova mensagem substituta
-            if image_io:
-                file = discord.File(image_io, filename="ranking.png")
-                fixed_booster_message = await channel.send(embed=embed, view=view, file=file)
-            else:
-                fixed_booster_message = await channel.send(embed=embed, view=view)
+                fixed_booster_message = await channel.send(embeds=embeds, view=view)
         else:
-            # envio novo (primeira vez)
-            if image_io:
-                file = discord.File(image_io, filename="ranking.png")
-                fixed_booster_message = await channel.send(embed=embed, view=view, file=file)
-            else:
-                fixed_booster_message = await channel.send(embed=embed, view=view)
+            fixed_booster_message = await channel.send(embeds=embeds, view=view)
     except Exception as e:
         print("Erro ao enviar/editar mensagem do ranking:", e)
         raise
@@ -540,20 +418,13 @@ async def update_booster_message():
     except Exception as e:
         print(f"[{INSTANCE_ID}] ❌ Erro ao atualizar mensagem fixa: {e}")
 
-# --------------- Start / Tratamento de erros ---------------
+# start
 def start_bot():
     try:
-        keep_alive()  # inicia keep-alive antes do bot
+        keep_alive()
         bot.run(TOKEN)
     except Exception as e:
         print("❌ Erro ao iniciar o bot:", type(e).__name__, "-", e)
-        txt = str(e).lower()
-        if "429" in txt or "too many requests" in txt or "rate limit" in txt or "access denied" in txt:
-            print("\n🚫 DETECTADO: 429 / bloqueio por Cloudflare ou excesso de tentativas.")
-            print("➡ Soluções sugeridas:")
-            print("   1) Regenerar token no Discord Developer Portal.")
-            print("   2) Atualizar DISCORD_TOKEN nas Environment Variables do Render.")
-            print("   3) Se persistir, IP do host pode estar bloqueado — tentar outro host ou contactar Render.")
         traceback.print_exc()
         time.sleep(5)
         sys.exit(1)
