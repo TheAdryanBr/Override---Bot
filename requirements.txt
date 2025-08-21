@@ -3,4 +3,4 @@ Flask>=3.1.1
 python-dotenv
 PyNaCl
 aiohttp
-Pillow
+Pillow==9.5.0
