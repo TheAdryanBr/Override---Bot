@@ -56,7 +56,6 @@ def home():
     return "Bot está rodando!"
 
 def run_flask():
-    # servidor dev é suficiente para keep-alive no Render
     app.run(host='0.0.0.0', port=8080)
 
 def keep_alive():
@@ -141,21 +140,6 @@ creation_locks = {}
 # Mensagem fixa do ranking (objeto discord.Message)
 fixed_booster_message = None
 
-# -------- CONFIG DE CANAIS FIXOS/ CATEGORIAS -------------
-CANAL_FIXO_CONFIG = {
-    1406308661810171965: {"categoria_id": 1213316039350296637, "prefixo_nome": "Call│"},
-    1404889040007725107: {"categoria_id": 1213319157639020564, "prefixo_nome": "♨️|Java│"},
-    1213319477429801011: {"categoria_id": 1213319157639020564, "prefixo_nome": "🪨|Bedrock|"},
-    1213321053196263464: {"categoria_id": 1213319620287664159, "prefixo_nome": "🎧│Call│"},
-    1213322485479637012: {"categoria_id": 1213322073594793994, "prefixo_nome": "👥│Dupla│"},
-    1213322743123148920: {"categoria_id": 1213322073594793994, "prefixo_nome": "👥│Trio│"},
-    1213322826564767776: {"categoria_id": 1213322073594793994, "prefixo_nome": "👥│Squad│"},
-    1216123178548465755: {"categoria_id": 1216123032138154008, "prefixo_nome": "👥│Duo│"},
-    1216123306579595274: {"categoria_id": 1216123032138154008, "prefixo_nome": "👥│Trio│"},
-    1216123421688205322: {"categoria_id": 1216123032138154008, "prefixo_nome": "👥│Team│"},
-    1213533210907246592: {"categoria_id": 1213532914520690739, "prefixo_nome": "🎧│Sala│"},
-}
-
 # ----------- ARQUIVO PARA SALVAR TEMPO DE BOOSTERS --------------
 DATA_FILE = "boosters_data.json"
 
@@ -171,87 +155,7 @@ def save_boosters_data(data):
 
 boosters_data = load_boosters_data()
 
-# -------------------- VOICE STATE (criação segura) --------------------
-@bot.event
-async def on_voice_state_update(member, before, after):
-    try:
-        print(f"Voice state update: {member} entrou no canal {after.channel.id if after.channel else 'Nenhum'} (before: {before.channel.id if before.channel else 'Nenhum'})")
-    except Exception:
-        print("Voice state update: erro ao printar membro/canais")
-
-    # criação de canal dinâmico
-    if after.channel and after.channel.id in CANAL_FIXO_CONFIG:
-        config = CANAL_FIXO_CONFIG[after.channel.id]
-        guild = member.guild
-        category = guild.get_channel(config["categoria_id"]) if guild else None
-
-        if not category or not isinstance(category, discord.CategoryChannel):
-            print(f"Categoria não encontrada (id: {config['categoria_id']})")
-            return
-
-        prefixo = config["prefixo_nome"]
-        # cria lock se necessário (thread-safe-ish)
-        lock = creation_locks.setdefault(after.channel.id, asyncio.Lock())
-
-        async with lock:
-            canais_existentes = [c for c in category.voice_channels if c.name.startswith(prefixo)]
-            usados = set()
-            pattern = rf'^{re.escape(prefixo)}\s*(\d+)$'
-            for c in canais_existentes:
-                m = re.search(pattern, c.name)
-                if m:
-                    try:
-                        usados.add(int(m.group(1)))
-                    except:
-                        pass
-
-            numero = 1
-            while numero in usados:
-                numero += 1
-
-            nome_canal = f"{prefixo} {numero}"
-
-            try:
-                new_channel = await guild.create_voice_channel(
-                    name=nome_canal,
-                    category=category,
-                    user_limit=5,
-                    reason="Dynamic voice room created"
-                )
-                print(f"Canal criado: {new_channel.name} (ID: {new_channel.id})")
-            except Exception as e:
-                print(f"Erro ao criar canal: {e}")
-                new_channel = None
-
-            if new_channel:
-                try:
-                    template_channel = guild.get_channel(after.channel.id)
-                    if template_channel:
-                        await new_channel.edit(position=(template_channel.position + 1))
-                except Exception as e:
-                    print(f"Não foi possível ajustar a posição do canal: {e}")
-
-                try:
-                    await member.move_to(new_channel)
-                    print(f"Movendo {member} para {new_channel.name}")
-                except Exception as e:
-                    print(f"Erro ao mover membro para o novo canal: {e}")
-
-    # exclusão de canais vazios
-    if before and before.channel:
-        try:
-            categorias_usadas = {conf["categoria_id"] for conf in CANAL_FIXO_CONFIG.values()}
-            if before.channel.category_id in categorias_usadas and before.channel.id not in CANAL_FIXO_CONFIG:
-                if len(before.channel.members) == 0:
-                    try:
-                        print(f"Canal vazio detectado: {before.channel.name}, deletando...")
-                        await before.channel.delete(reason="Dynamic voice room became empty")
-                    except Exception as e:
-                        print(f"Erro ao deletar canal vazio: {e}")
-        except Exception as e:
-            print(f"Erro na rotina de exclusão: {e}")
-
-# -------------------- Helpers e View --------------------
+# -------------------- Helpers --------------------
 def format_relative_time(boost_time):
     now = datetime.now(timezone.utc)
     diff = now - boost_time
@@ -296,7 +200,7 @@ def generate_ranking_image(boosters, page=0, per_page=5, width=900, row_height=8
 
     start = page
     end = min(page + per_page, len(boosters))
-    rows = end - start
+    rows = max(1, end - start)
     height = margin * 2 + rows * row_height
 
     img = Image.new("RGBA", (width, max(height, 120)), (255, 255, 255, 255))
@@ -368,7 +272,7 @@ def generate_ranking_image(boosters, page=0, per_page=5, width=900, row_height=8
     out.seek(0)
     return out
 
-
+# -------------------- View simplificada (botões) --------------------
 class BoosterRankView(View):
     def __init__(self, boosters, is_personal=False):
         super().__init__(timeout=None)
@@ -383,7 +287,6 @@ class BoosterRankView(View):
         try:
             prev_disabled = self.page <= 0
             next_disabled = (self.page + self.per_page) >= total
-            # defensivo: só atualiza se existirem filhos
             if len(self.children) >= 4:
                 self.children[0].disabled = prev_disabled
                 self.children[2].disabled = prev_disabled
@@ -391,38 +294,16 @@ class BoosterRankView(View):
         except Exception:
             pass
 
-    def _display_name(self, member):
-        return getattr(member, "display_name", getattr(member, "name", f"User {getattr(member, 'id', '???')}"))
-
-    def _avatar_url(self, member):
-        # tries multiple attributes to be compatible across discord.py versions / fake objects
-        try:
-            if hasattr(member, "display_avatar"):
-                return member.display_avatar.url
-        except:
-            pass
-        try:
-            if getattr(member, "avatar", None):
-                return member.avatar.url
-        except:
-            pass
-        return None
-
     def build_embed(self):
+        # embed minimal: imagem gerada conterá o layout (avatars + nomes)
         embed = discord.Embed(title="🏆 Top Boosters", color=discord.Color.purple())
         start = self.page
         end = min(self.page + self.per_page, len(self.boosters))
-        for i, (member, boost_time) in enumerate(self.boosters[start:end], start=1 + self.page):
-            formatted_time = format_relative_time(boost_time)
-            embed.add_field(
-                name=f"{i}. {self._display_name(member)}",
-                value=f"🕒 Boostando desde {formatted_time}",
-                inline=False
-            )
         embed.set_footer(text=f"Exibindo {start + 1}-{end} de {len(self.boosters)} boosters")
+        # imagem será anexada como attachment "ranking.png"
+        embed.set_image(url="attachment://ranking.png")
         return embed
 
-    # Botões: previous, refresh, home, next
     @button(label="⬅ Voltar", style=discord.ButtonStyle.secondary, custom_id="previous")
     async def previous(self, interaction: discord.Interaction, button: discord.ui.Button):
         new_page = max(0, self.page - self.per_page)
@@ -452,7 +333,13 @@ class BoosterRankView(View):
             self.boosters = boosters
             self.page = 0
             self.update_disabled()
-            await interaction.response.edit_message(embed=self.build_embed(), view=self)
+            # gera nova imagem para edição em-contexto
+            image_io = generate_ranking_image(self.boosters, page=self.page, per_page=self.per_page)
+            if image_io:
+                file = discord.File(image_io, filename="ranking.png")
+                await interaction.response.edit_message(embed=self.build_embed(), view=self, attachments=[file])
+            else:
+                await interaction.response.edit_message(embed=self.build_embed(), view=self)
         else:
             new_view = BoosterRankView(boosters, is_personal=True)
             await interaction.response.send_message(embed=new_view.build_embed(), view=new_view, ephemeral=True)
@@ -481,7 +368,7 @@ class BoosterRankView(View):
             new_view.update_disabled()
             await interaction.response.send_message(embed=new_view.build_embed(), view=new_view, ephemeral=True)
 
-# -------------------- Comandos / lógica --------------------
+# -------------------- Comandos / lógica do ranking --------------------
 @bot.command()
 async def boosters(ctx):
     global fixed_booster_message
@@ -508,7 +395,11 @@ async def testboost(ctx):
     finally:
         processing_commands.remove(ctx.author.id)
 
-async def send_booster_rank(channel, fake=False, tester=None, edit_message=None):
+async def send_booster_rank(channel, fake=False, tester=None, edit_message=None, page=0, per_page=5):
+    """
+    Gera o ranking, cria uma imagem com avatars ao lado dos nomes e envia UMA embed com a imagem anexada.
+    Se edit_message for fornecida, tenta deletar a mensagem antiga e enviar uma nova (para atualizar attachments).
+    """
     global fixed_booster_message
     guild = bot.get_guild(GUILD_ID)
     boosters = []
@@ -544,16 +435,30 @@ async def send_booster_rank(channel, fake=False, tester=None, edit_message=None)
     view = BoosterRankView(boosters, is_personal=False)
     embed = view.build_embed()
 
-    # gera imagem do ranking e anexa como arquivo (se possível)
-    image_io = generate_ranking_image(boosters, page=0, per_page=5)
+    # gera imagem do ranking
+    image_io = generate_ranking_image(boosters, page=page, per_page=per_page)
+
     try:
+        # se vamos editar uma mensagem existente com attachment, delete & re-send (attachments não atualizam via edit)
         if edit_message:
             try:
-                await edit_message.edit(embed=embed, view=view)
-                fixed_booster_message = edit_message
+                await edit_message.delete()
             except Exception:
+                # se não puder deletar, tentamos edit simples (sem imagem)
+                try:
+                    await edit_message.edit(embed=embed, view=view)
+                    fixed_booster_message = edit_message
+                    return
+                except Exception:
+                    pass
+            # envia nova mensagem substituta
+            if image_io:
+                file = discord.File(image_io, filename="ranking.png")
+                fixed_booster_message = await channel.send(embed=embed, view=view, file=file)
+            else:
                 fixed_booster_message = await channel.send(embed=embed, view=view)
         else:
+            # envio novo (primeira vez)
             if image_io:
                 file = discord.File(image_io, filename="ranking.png")
                 fixed_booster_message = await channel.send(embed=embed, view=view, file=file)
