@@ -8,9 +8,7 @@ import time
 import uuid
 import types
 import io
-import aiohttp
 from datetime import datetime, timezone, timedelta
-from threading import Thread
 
 # ======== SHIM PARA `audioop` (ambientes minimalistas) ========
 try:
@@ -37,9 +35,18 @@ from discord.ext import commands, tasks
 from discord.ui import View, button
 
 from flask import Flask
+from threading import Thread
 
-# Imagem: Pillow
-from PIL import Image, ImageDraw, ImageFont
+# --- PIL / requests para gerar a imagem do ranking ---
+try:
+    from PIL import Image, ImageDraw, ImageFont, ImageOps
+except Exception:
+    Image = ImageDraw = ImageFont = ImageOps = None
+
+try:
+    import requests
+except Exception:
+    requests = None
 
 # -------------------- KEEP ALIVE (Flask) --------------------
 app = Flask('')
@@ -164,155 +171,6 @@ def save_boosters_data(data):
 
 boosters_data = load_boosters_data()
 
-# -------------------- Funções de geração de imagem --------------------
-async def fetch_avatar_bytes(session: aiohttp.ClientSession, member):
-    url = None
-    try:
-        if hasattr(member, "display_avatar"):
-            url = str(member.display_avatar.url)
-    except:
-        pass
-    try:
-        if not url and getattr(member, "avatar", None):
-            url = str(member.avatar.url)
-    except:
-        pass
-    if not url:
-        return None
-    try:
-        async with session.get(url, timeout=10) as resp:
-            if resp.status == 200:
-                return await resp.read()
-    except Exception:
-        return None
-    return None
-
-def make_round(im, size):
-    im = im.resize((size, size)).convert("RGBA")
-    mask = Image.new("L", (size, size), 0)
-    draw = ImageDraw.Draw(mask)
-    draw.ellipse((0, 0, size, size), fill=255)
-    out = Image.new("RGBA", (size, size), (0,0,0,0))
-    out.paste(im, (0, 0), mask)
-    return out
-
-async def generate_ranking_image(boosters, page: int = 0, per_page: int = 5, top_n: int = 20):
-    """
-    Gera PNG em memória com avatar à ESQUERDA e nome + tempo à DIREITA (duas linhas).
-    boosters: lista completa (member, start_time)
-    page/per_page: paginação; aplica slice antes de desenhar
-    top_n: limite máximo de linhas desenhadas (proteção)
-    Retorna BytesIO pronto para enviar como arquivo.
-    """
-    # slice pelos índices de paginação e também pelo top_n para evitar imagens gigantes
-    start = max(0, page)
-    per_page = max(1, per_page)
-    selected = boosters[start:start+per_page]
-    selected = selected[:top_n]
-
-    if not selected:
-        img = Image.new("RGBA", (600, 120), (30,30,30,255))
-        d = ImageDraw.Draw(img)
-        try:
-            f = ImageFont.truetype("arial.ttf", 18)
-        except:
-            f = ImageFont.load_default()
-        d.text((20, 40), "Nenhum booster encontrado", font=f, fill=(230,230,230,255))
-        bio = io.BytesIO()
-        img.convert("RGB").save(bio, "PNG")
-        bio.seek(0)
-        return bio
-
-    avatar_size = 64
-    padding = 18
-    spacing_between_rows = 16
-    name_font_size = 18
-    small_font_size = 14
-    header_h = 48
-    max_width = 1000
-
-    line_height = max(avatar_size, name_font_size + small_font_size + 8) + spacing_between_rows
-    width = max_width
-    height = padding * 2 + header_h + len(selected) * line_height
-
-    img = Image.new("RGBA", (width, height), (24, 25, 30, 255))
-    draw = ImageDraw.Draw(img)
-
-    # fonts (fallback)
-    try:
-        name_font = ImageFont.truetype("arial.ttf", name_font_size)
-        small_font = ImageFont.truetype("arial.ttf", small_font_size)
-        header_font = ImageFont.truetype("arialbd.ttf", 22)
-    except Exception:
-        name_font = ImageFont.load_default()
-        small_font = ImageFont.load_default()
-        header_font = ImageFont.load_default()
-
-    # header
-    header_text = "🏆 Top Boosters"
-    draw.text((padding, padding), header_text, font=header_font, fill=(255,255,255,255))
-    start_y = padding + header_h
-
-    # baixar avatares em paralelo
-    async with aiohttp.ClientSession() as session:
-        fetchers = [fetch_avatar_bytes(session, m) for m, _ in selected]
-        avatars_bytes = await asyncio.gather(*fetchers, return_exceptions=True)
-
-    for idx, ((member, boost_time), avb) in enumerate(zip(selected, avatars_bytes)):
-        y_top = start_y + idx * line_height
-        x_avatar = padding
-        # avatar
-        if isinstance(avb, (bytes, bytearray)):
-            try:
-                av_img = Image.open(io.BytesIO(avb)).convert("RGBA")
-                av_img = make_round(av_img, avatar_size)
-            except Exception:
-                av_img = Image.new("RGBA", (avatar_size, avatar_size), (90,90,90,255))
-                av_img = make_round(av_img, avatar_size)
-        else:
-            seed = getattr(member, "id", idx)
-            color_seed = (hash(seed) & 0xFFFFFF)
-            r = (color_seed >> 16) & 0xFF
-            g = (color_seed >> 8) & 0xFF
-            b = color_seed & 0xFF
-            av_img = Image.new("RGBA", (avatar_size, avatar_size), (r, g, b, 255))
-            av_img = make_round(av_img, avatar_size)
-
-        img.paste(av_img, (x_avatar, y_top), av_img)
-
-        # texto à direita do avatar
-        text_x = x_avatar + avatar_size + 14
-        name = getattr(member, "display_name", getattr(member, "name", f"User {getattr(member, 'id', '???')}"))
-        # corta o nome se for muito longo
-        max_name_w = width - text_x - padding
-        nm = name
-        # reduzir até caber
-        while True:
-            w, _ = draw.textsize(nm, font=name_font)
-            if w <= max_name_w or len(nm) <= 4:
-                break
-            nm = nm[:-1]
-        if nm != name:
-            nm = nm[:-3] + "..." if len(nm) > 3 else nm
-
-        # Tempo relativo (segunda linha)
-        rel = format_relative_time(boost_time)
-
-        # desenha nome e tempo
-        draw.text((text_x, y_top + 2), f"{start + idx + 1}. {nm}", font=name_font, fill=(245,245,245,255))
-        small_y = y_top + 2 + draw.textsize(f"{start + idx + 1}. {nm}", font=name_font)[1] + 6
-        draw.text((text_x, small_y), f"{rel}", font=small_font, fill=(180,180,180,255))
-
-        # linha divisória
-        line_y = y_top + line_height - spacing_between_rows // 2
-        draw.line((padding, line_y, width - padding, line_y), fill=(40,40,45,255), width=1)
-
-    # export
-    bio = io.BytesIO()
-    img.convert("RGB").save(bio, "PNG")
-    bio.seek(0)
-    return bio
-
 # -------------------- VOICE STATE (criação segura) --------------------
 @bot.event
 async def on_voice_state_update(member, before, after):
@@ -322,7 +180,7 @@ async def on_voice_state_update(member, before, after):
         print("Voice state update: erro ao printar membro/canais")
 
     # criação de canal dinâmico
-    if after and after.channel and after.channel.id in CANAL_FIXO_CONFIG:
+    if after.channel and after.channel.id in CANAL_FIXO_CONFIG:
         config = CANAL_FIXO_CONFIG[after.channel.id]
         guild = member.guild
         category = guild.get_channel(config["categoria_id"]) if guild else None
@@ -332,6 +190,7 @@ async def on_voice_state_update(member, before, after):
             return
 
         prefixo = config["prefixo_nome"]
+        # cria lock se necessário (thread-safe-ish)
         lock = creation_locks.setdefault(after.channel.id, asyncio.Lock())
 
         async with lock:
@@ -411,6 +270,105 @@ def format_relative_time(boost_time):
         parts.append(f"{seconds} segundo{'s' if seconds > 1 else ''}")
     return "há " + ", ".join(parts[:-1]) + (" e " + parts[-1] if len(parts) > 1 else parts[0])
 
+# -------------------- GERA IMAGEM DO RANKING (PIL usando textbbox) --------------------
+def generate_ranking_image(boosters, page=0, per_page=5, width=900, row_height=80):
+    """
+    Gera uma imagem PNG em memória contendo o ranking com avatar ao lado do nome.
+    Retorna um BytesIO pronto para ser enviado como arquivo.
+    Usa draw.textbbox(...) para compatibilidade com Pillow 10+.
+    """
+    if Image is None or ImageDraw is None or ImageFont is None:
+        return None
+
+    # configurações visuais
+    margin = 16
+    avatar_size = 56
+    gap = 12
+    font_size_name = 18
+    font_size_meta = 14
+
+    try:
+        name_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size_name)
+        meta_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", font_size_meta)
+    except Exception:
+        name_font = ImageFont.load_default()
+        meta_font = ImageFont.load_default()
+
+    start = page
+    end = min(page + per_page, len(boosters))
+    rows = end - start
+    height = margin * 2 + rows * row_height
+
+    img = Image.new("RGBA", (width, max(height, 120)), (255, 255, 255, 255))
+    draw = ImageDraw.Draw(img)
+
+    y = margin
+    for i, (member, boost_time) in enumerate(boosters[start:end], start=1 + page):
+        # avatar
+        avatar_url = None
+        try:
+            if hasattr(member, 'display_avatar'):
+                avatar_url = member.display_avatar.url
+            elif getattr(member, 'avatar', None):
+                avatar_url = member.avatar.url
+        except Exception:
+            avatar_url = None
+
+        avatar_img = None
+        if avatar_url and requests:
+            try:
+                r = requests.get(avatar_url, timeout=6)
+                if r.status_code == 200:
+                    avatar_img = Image.open(io.BytesIO(r.content)).convert("RGBA")
+            except Exception:
+                avatar_img = None
+
+        if not avatar_img:
+            # placeholder circle
+            avatar_img = Image.new("RGBA", (avatar_size, avatar_size), (200, 200, 200, 255))
+
+        # crop/fit avatar to square and circle mask
+        avatar_img = ImageOps.fit(avatar_img, (avatar_size, avatar_size))
+        mask = Image.new("L", (avatar_size, avatar_size), 0)
+        mask_draw = ImageDraw.Draw(mask)
+        mask_draw.ellipse((0, 0, avatar_size, avatar_size), fill=255)
+        img.paste(avatar_img, (margin, y + (row_height - avatar_size)//2), mask)
+
+        # textos: name + meta
+        name = getattr(member, 'display_name', getattr(member, 'name', f"User {getattr(member, 'id', '???')}"))
+        formatted_time = format_relative_time(boost_time)
+        name_x = margin + avatar_size + gap
+        name_y = y + 8
+
+        # largura / altura usando textbbox
+        bbox = draw.textbbox((0, 0), name, font=name_font)
+        name_h = bbox[3] - bbox[1]
+        draw.text((name_x, name_y), name, font=name_font, fill=(32, 32, 32))
+
+        meta_text = f"🕒 {formatted_time}"
+        bbox_m = draw.textbbox((0, 0), meta_text, font=meta_font)
+        meta_h = bbox_m[3] - bbox_m[1]
+        draw.text((name_x, name_y + name_h + 6), meta_text, font=meta_font, fill=(100, 100, 100))
+
+        # número da colocação à esquerda do avatar
+        rank_text = f"{i}."
+        bbox_r = draw.textbbox((0, 0), rank_text, font=name_font)
+        r_w = bbox_r[2] - bbox_r[0]
+        draw.text((margin - r_w - 8, name_y), rank_text, font=name_font, fill=(50, 50, 50))
+
+        y += row_height
+
+    # footer
+    footer_text = f"Exibindo {start + 1}-{end} de {len(boosters)} boosters"
+    bbox_f = draw.textbbox((0, 0), footer_text, font=meta_font)
+    draw.text((margin, img.height - margin - (bbox_f[3] - bbox_f[1])), footer_text, font=meta_font, fill=(120, 120, 120))
+
+    out = io.BytesIO()
+    img.save(out, format="PNG")
+    out.seek(0)
+    return out
+
+
 class BoosterRankView(View):
     def __init__(self, boosters, is_personal=False):
         super().__init__(timeout=None)
@@ -425,6 +383,7 @@ class BoosterRankView(View):
         try:
             prev_disabled = self.page <= 0
             next_disabled = (self.page + self.per_page) >= total
+            # defensivo: só atualiza se existirem filhos
             if len(self.children) >= 4:
                 self.children[0].disabled = prev_disabled
                 self.children[2].disabled = prev_disabled
@@ -436,6 +395,7 @@ class BoosterRankView(View):
         return getattr(member, "display_name", getattr(member, "name", f"User {getattr(member, 'id', '???')}"))
 
     def _avatar_url(self, member):
+        # tries multiple attributes to be compatible across discord.py versions / fake objects
         try:
             if hasattr(member, "display_avatar"):
                 return member.display_avatar.url
@@ -448,7 +408,6 @@ class BoosterRankView(View):
             pass
         return None
 
-    # NOTE: build_embed fica presente para compatibilidade mas a exibição principal agora é por imagem.
     def build_embed(self):
         embed = discord.Embed(title="🏆 Top Boosters", color=discord.Color.purple())
         start = self.page
@@ -460,13 +419,6 @@ class BoosterRankView(View):
                 value=f"🕒 Boostando desde {formatted_time}",
                 inline=False
             )
-        if self.boosters:
-            try:
-                avatar_url = self._avatar_url(self.boosters[0][0])
-                if avatar_url:
-                    embed.set_thumbnail(url=avatar_url)
-            except Exception:
-                pass
         embed.set_footer(text=f"Exibindo {start + 1}-{end} de {len(self.boosters)} boosters")
         return embed
 
@@ -474,29 +426,18 @@ class BoosterRankView(View):
     @button(label="⬅ Voltar", style=discord.ButtonStyle.secondary, custom_id="previous")
     async def previous(self, interaction: discord.Interaction, button: discord.ui.Button):
         new_page = max(0, self.page - self.per_page)
-        self.page = new_page
-        self.update_disabled()
-
         if self.is_personal:
-            # atualiza a mensagem fixa (apaga + reenvia)
-            await send_booster_rank(interaction.message.channel, edit_message=interaction.message, page=self.page, per_page=self.per_page)
-            try:
-                await interaction.response.defer()  # já atualizamos via send_booster_rank
-            except:
-                pass
+            self.page = new_page
+            self.update_disabled()
+            await interaction.response.edit_message(embed=self.build_embed(), view=self)
         else:
-            # envia versão ephemeral (imagem + view pessoal)
-            selected_boosters = self.boosters
-            new_view = BoosterRankView(selected_boosters, is_personal=True)
-            new_view.page = self.page
+            new_view = BoosterRankView(self.boosters, is_personal=True)
+            new_view.page = new_page
             new_view.update_disabled()
-            bio = await generate_ranking_image(selected_boosters, page=new_view.page, per_page=new_view.per_page)
-            file = discord.File(fp=bio, filename="ranking.png")
-            await interaction.response.send_message(file=file, view=new_view, ephemeral=True)
+            await interaction.response.send_message(embed=new_view.build_embed(), view=new_view, ephemeral=True)
 
     @button(label="🔁 Atualizar", style=discord.ButtonStyle.primary, custom_id="refresh")
     async def refresh(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # Recarrega dados do cargo e atualiza
         guild = interaction.guild
         role = guild.get_role(CUSTOM_BOOSTER_ROLE_ID) if guild else None
         boosters = []
@@ -507,60 +448,38 @@ class BoosterRankView(View):
                 start_time = (datetime.fromisoformat(start_time_str) if start_time_str else member.premium_since or datetime.now(timezone.utc))
                 boosters.append((member, start_time))
             boosters.sort(key=lambda x: x[1])
-
         if self.is_personal:
-            # sobrescreve na view atual e atualiza a mensagem fixa
             self.boosters = boosters
             self.page = 0
             self.update_disabled()
-            await send_booster_rank(interaction.message.channel, edit_message=interaction.message, page=self.page, per_page=self.per_page)
-            try:
-                await interaction.response.defer()
-            except:
-                pass
+            await interaction.response.edit_message(embed=self.build_embed(), view=self)
         else:
             new_view = BoosterRankView(boosters, is_personal=True)
-            bio = await generate_ranking_image(boosters, page=new_view.page, per_page=new_view.per_page)
-            file = discord.File(fp=bio, filename="ranking.png")
-            await interaction.response.send_message(file=file, view=new_view, ephemeral=True)
+            await interaction.response.send_message(embed=new_view.build_embed(), view=new_view, ephemeral=True)
 
     @button(label="🏠 Início", style=discord.ButtonStyle.success, custom_id="home")
     async def home(self, interaction: discord.Interaction, button: discord.ui.Button):
-        self.page = 0
-        self.update_disabled()
-
         if self.is_personal:
-            await send_booster_rank(interaction.message.channel, edit_message=interaction.message, page=self.page, per_page=self.per_page)
-            try:
-                await interaction.response.defer()
-            except:
-                pass
+            self.page = 0
+            self.update_disabled()
+            await interaction.response.edit_message(embed=self.build_embed(), view=self)
         else:
             new_view = BoosterRankView(self.boosters, is_personal=True)
-            bio = await generate_ranking_image(self.boosters, page=new_view.page, per_page=new_view.per_page)
-            file = discord.File(fp=bio, filename="ranking.png")
-            await interaction.response.send_message(file=file, view=new_view, ephemeral=True)
+            await interaction.response.send_message(embed=new_view.build_embed(), view=new_view, ephemeral=True)
 
     @button(label="➡ Avançar", style=discord.ButtonStyle.secondary, custom_id="next")
     async def next_page(self, interaction: discord.Interaction, button: discord.ui.Button):
         max_start = max(0, len(self.boosters) - self.per_page)
         new_page = min(max_start, self.page + self.per_page)
-        self.page = new_page
-        self.update_disabled()
-
         if self.is_personal:
-            await send_booster_rank(interaction.message.channel, edit_message=interaction.message, page=self.page, per_page=self.per_page)
-            try:
-                await interaction.response.defer()
-            except:
-                pass
+            self.page = new_page
+            self.update_disabled()
+            await interaction.response.edit_message(embed=self.build_embed(), view=self)
         else:
             new_view = BoosterRankView(self.boosters, is_personal=True)
             new_view.page = new_page
             new_view.update_disabled()
-            bio = await generate_ranking_image(self.boosters, page=new_view.page, per_page=new_view.per_page)
-            file = discord.File(fp=bio, filename="ranking.png")
-            await interaction.response.send_message(file=file, view=new_view, ephemeral=True)
+            await interaction.response.send_message(embed=new_view.build_embed(), view=new_view, ephemeral=True)
 
 # -------------------- Comandos / lógica --------------------
 @bot.command()
@@ -589,12 +508,7 @@ async def testboost(ctx):
     finally:
         processing_commands.remove(ctx.author.id)
 
-async def send_booster_rank(channel, fake=False, tester=None, edit_message=None, page: int = 0, per_page: int = 5):
-    """
-    Agora envia a imagem do ranking como attachment.
-    Se edit_message for passado, tentamos apagar a mensagem antiga e enviar nova (para 'atualizar' a fixa).
-    page/per_page controlam qual fatia mostrar na imagem.
-    """
+async def send_booster_rank(channel, fake=False, tester=None, edit_message=None):
     global fixed_booster_message
     guild = bot.get_guild(GUILD_ID)
     boosters = []
@@ -627,24 +541,27 @@ async def send_booster_rank(channel, fake=False, tester=None, edit_message=None,
             await channel.send("❌ Nenhum booster encontrado.")
         return
 
-    # Gera imagem (usar paginação fornecida)
-    bio = await generate_ranking_image(boosters, page=page, per_page=per_page)
-    file = discord.File(fp=bio, filename="ranking.png")
-
-    # build a view com a lista completa para navegacao (a view fará slicing via page/per_page)
     view = BoosterRankView(boosters, is_personal=False)
+    embed = view.build_embed()
 
-    if edit_message:
-        # tentar apagar a antiga e enviar nova (substituindo)
-        try:
-            await edit_message.delete()
-        except Exception:
-            pass
-        msg = await channel.send(file=file, view=view)
-        fixed_booster_message = msg
-    else:
-        msg = await channel.send(file=file, view=view)
-        fixed_booster_message = msg
+    # gera imagem do ranking e anexa como arquivo (se possível)
+    image_io = generate_ranking_image(boosters, page=0, per_page=5)
+    try:
+        if edit_message:
+            try:
+                await edit_message.edit(embed=embed, view=view)
+                fixed_booster_message = edit_message
+            except Exception:
+                fixed_booster_message = await channel.send(embed=embed, view=view)
+        else:
+            if image_io:
+                file = discord.File(image_io, filename="ranking.png")
+                fixed_booster_message = await channel.send(embed=embed, view=view, file=file)
+            else:
+                fixed_booster_message = await channel.send(embed=embed, view=view)
+    except Exception as e:
+        print("Erro ao enviar/editar mensagem do ranking:", e)
+        raise
 
 # Evento para adicionar/remover cargo custom e salvar tempo boost
 @bot.event
