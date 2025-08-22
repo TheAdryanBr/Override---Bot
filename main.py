@@ -541,8 +541,9 @@ def _find_welcome_channel(guild: discord.Guild) -> Optional[discord.TextChannel]
     return None
 
 def _build_welcome_embed(member: discord.Member) -> discord.Embed:
-    title = f"{member.mention} | 𝘽𝙚𝙢-𝙫𝙞𝙣𝙙𝙤(𝙖)! 👋"
-    description = f"Seja bem vindo (a) {member.mention}, agradeço por ter entrado no servidor, espero que goste dele, jogue e converse muito."
+    # Use display_name inside the embed (so it doesn't render as a raw <@id> inside code blocks)
+    title = f"``` {member.display_name} | 𝘽𝙚𝙢-𝙫𝙞𝙣𝙙𝙤(𝙖)! 👋```"
+    description = f"```Seja bem vindo (a) {member.display_name}, agradeço por ter entrado no servidor, espero que goste dele, jogue e converse muito.```"
     embed = discord.Embed(title=title, description=description, color=discord.Color(_WELCOME_COLOR))
     try:
         avatar_url = member.display_avatar.url
@@ -552,11 +553,12 @@ def _build_welcome_embed(member: discord.Member) -> discord.Embed:
     embed.add_field(
         name="📢│𝙁𝙞𝙦𝙪𝙚 𝙖𝙩𝙚𝙣𝙩𝙤!",
         value="Leias as regras no canal: <#1213332268618096690>\nDuvidas e sugestões no canal: <#1259311950958170205>\nAgora vai lá aproveitar 😁",
-        inline=True
+        inline=False
     )
     return embed
 
 def _build_leave_content(member: discord.Member) -> str:
+    # leave message keeps the mention (mention in content will ping if user still exists)
     return f"({member.mention} saiu do servidor) Triste, mas vá com Deus meu mano."
 
 @bot.event
@@ -579,7 +581,8 @@ async def on_member_join(member: discord.Member):
 
         embed = _build_welcome_embed(member)
         try:
-            await channel.send(embed=embed)
+            # send mention in content to guarantee the ping, embed uses display_name so no raw <@id> inside it
+            await channel.send(content=member.mention, embed=embed, allowed_mentions=discord.AllowedMentions(users=True))
         except Exception as e:
             print(f"[{INSTANCE_ID}] Erro ao enviar mensagem de boas-vindas: {e}")
 
@@ -587,6 +590,7 @@ async def on_member_join(member: discord.Member):
             try:
                 log_ch = guild.get_channel(WELCOME_LOG_CHANNEL_ID)
                 if isinstance(log_ch, discord.TextChannel):
+                    # logs: do not ping, only send embed
                     await log_ch.send(embed=embed)
             except Exception as e:
                 print(f"[{INSTANCE_ID}] Erro ao enviar welcome para canal de log: {e}")
@@ -613,7 +617,8 @@ async def on_member_remove(member: discord.Member):
 
         if channel:
             try:
-                await channel.send(content)
+                # send leave mention (allowed_mentions keeps control)
+                await channel.send(content, allowed_mentions=discord.AllowedMentions(users=True))
             except Exception as e:
                 print(f"[{INSTANCE_ID}] Erro ao enviar mensagem de saída: {e}")
         else:
@@ -623,7 +628,7 @@ async def on_member_remove(member: discord.Member):
             try:
                 log_ch = guild.get_channel(WELCOME_LOG_CHANNEL_ID)
                 if isinstance(log_ch, discord.TextChannel):
-                    await log_ch.send(content)
+                    await log_ch.send(content, allowed_mentions=discord.AllowedMentions(users=True))
             except Exception as e:
                 print(f"[{INSTANCE_ID}] Erro ao enviar leave para canal de log: {e}")
 
