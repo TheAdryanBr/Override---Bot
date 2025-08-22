@@ -1,4 +1,4 @@
-# (arquivo main.py — fragmento completo com ranking sem imagem composta)
+# main.py — ranking + /denunciar (slash)
 import os
 import sys
 import json
@@ -8,6 +8,7 @@ import traceback
 import time
 import uuid
 import types
+from typing import Optional
 from datetime import datetime, timezone, timedelta
 
 # ======== SHIM PARA `audioop` (ambientes minimalistas) ========
@@ -32,6 +33,7 @@ except Exception:
 import discord
 from discord.ext import commands, tasks
 from discord.ui import View, button
+from discord import app_commands
 
 from flask import Flask
 from threading import Thread
@@ -95,6 +97,10 @@ if TOKEN:
 if not TOKEN:
     raise RuntimeError("❌ Erro: DISCORD_TOKEN/TOKEN não encontrado nas env vars nem em /etc/secrets.")
 
+# IDs/Config para denúncias (opcionais)
+REPORT_CHANNEL_ID = _int_env("REPORT_CHANNEL_ID", 0)
+ADMIN_ROLE_ID = _int_env("ADMIN_ROLE_ID", 0)
+
 GUILD_ID = _int_env("GUILD_ID", 1213316038805164093)
 BOOSTER_ROLE_ID = _int_env("BOOSTER_ROLE_ID", 1406307445306818683)
 CUSTOM_BOOSTER_ROLE_ID = _int_env("CUSTOM_BOOSTER_ROLE_ID", BOOSTER_ROLE_ID)
@@ -149,7 +155,6 @@ def build_embeds_for_page(boosters, page=0, per_page=5, title_prefix="🏆 Top B
     embeds = []
     start = page
     end = min(page + per_page, len(boosters))
-    # Se quiser título geral na primeira embed:
     for idx, (member, boost_time) in enumerate(boosters[start:end], start=1 + page):
         display_name = getattr(member, "display_name", getattr(member, "name", f"User {getattr(member,'id','???')}"))
         formatted_time = format_relative_time(boost_time)
@@ -288,8 +293,7 @@ async def testboost(ctx):
 
 async def send_booster_rank(channel, fake=False, tester=None, edit_message=None, page=0, per_page=5):
     """
-    Agora envia N embeds por página (cada embed tem thumbnail = avatar do user).
-    Se edit_message for fornecida, tentamos deletar a antiga e enviar nova (para atualizar).
+    Envia N embeds por página (cada embed tem thumbnail = avatar do user).
     """
     global fixed_booster_message
     guild = bot.get_guild(GUILD_ID)
@@ -328,13 +332,10 @@ async def send_booster_rank(channel, fake=False, tester=None, edit_message=None,
 
     try:
         if edit_message:
-            # delete & resend for attachments consistency; here no attachments so we can edit
             try:
-                # prefer editing the message's embeds if allowed
                 await edit_message.edit(embeds=embeds, view=view)
                 fixed_booster_message = edit_message
             except Exception:
-                # fallback: delete and send new
                 try:
                     await edit_message.delete()
                 except Exception:
@@ -394,10 +395,156 @@ async def boosttime(ctx, member: discord.Member = None):
     start_time = datetime.fromisoformat(boosters_data[user_id_str])
     await ctx.send(f"{member.display_name} está boostando {format_relative_time(start_time)}")
 
+# -------------------- Denúncias: helpers + slash command --------------------
+async def ensure_report_channel(guild: discord.Guild) -> Optional[discord.TextChannel]:
+    """
+    Garante que exista um canal de denúncias (TextChannel).
+    Usa REPORT_CHANNEL_ID / ADMIN_ROLE_ID env vars se fornecidas, senão procura/cria.
+    """
+    global REPORT_CHANNEL_ID
+    if REPORT_CHANNEL_ID:
+        ch = guild.get_channel(REPORT_CHANNEL_ID)
+        if isinstance(ch, discord.TextChannel):
+            return ch
+        REPORT_CHANNEL_ID = 0
+
+    # procura por canal existente
+    for c in guild.text_channels:
+        if c.name.lower() in ("denuncias", "denúncias", "reports"):
+            return c
+
+    # tenta criar se possível
+    try:
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(view_channel=False, read_messages=False),
+            guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_messages=True)
+        }
+        if ADMIN_ROLE_ID:
+            role = guild.get_role(ADMIN_ROLE_ID)
+            if role:
+                overwrites[role] = discord.PermissionOverwrite(view_channel=True, read_messages=True, send_messages=True)
+        ch = await guild.create_text_channel("denuncias", overwrites=overwrites, reason="Canal de denúncias criado pelo bot")
+        REPORT_CHANNEL_ID = ch.id
+        print(f"[{INSTANCE_ID}] Canal de denúncias criado: {ch.id}")
+        return ch
+    except Exception as e:
+        print(f"[{INSTANCE_ID}] Não foi possível criar canal de denúncias: {e}")
+        return None
+
+# categorias (choices)
+CATEGORY_CHOICES = [
+    app_commands.Choice(name="Spam / Publicidade", value="spam"),
+    app_commands.Choice(name="Assédio / Abuso", value="assedio"),
+    app_commands.Choice(name="Conteúdo ilegal / perigoso", value="ilegal"),
+    app_commands.Choice(name="Violação de regras (outros)", value="outro"),
+]
+
+@bot.tree.command(name="denunciar", description="Enviar denúncia para a equipe (admins receberão).")
+@app_commands.describe(
+    categoria="Categoria da denúncia",
+    detalhes="Descreva o que aconteceu (opcional, máximo ~4000 caracteres).",
+    link="Link de referência (opcional)",
+    anexo1="Arquivo 1 (opcional)",
+    anexo2="Arquivo 2 (opcional)",
+    anexo3="Arquivo 3 (opcional)",
+)
+@app_commands.choices(categoria=CATEGORY_CHOICES)
+async def denunciar(
+    interaction: discord.Interaction,
+    categoria: app_commands.Choice[str],
+    detalhes: Optional[str] = None,
+    link: Optional[str] = None,
+    anexo1: Optional[discord.Attachment] = None,
+    anexo2: Optional[discord.Attachment] = None,
+    anexo3: Optional[discord.Attachment] = None,
+):
+    await interaction.response.defer(ephemeral=True)
+
+    if interaction.guild is None:
+        await interaction.followup.send("❌ Este comando só pode ser usado em servidores.", ephemeral=True)
+        return
+
+    guild = interaction.guild
+    author = interaction.user
+    channel_origin = interaction.channel
+
+    report_channel = None
+    if REPORT_CHANNEL_ID:
+        report_channel = guild.get_channel(REPORT_CHANNEL_ID)
+    if report_channel is None:
+        report_channel = await ensure_report_channel(guild)
+    if report_channel is None:
+        await interaction.followup.send("❌ Não foi possível localizar/criar o canal de denúncias. Contate a staff.", ephemeral=True)
+        return
+
+    ts = datetime.now(timezone.utc)
+    embed = discord.Embed(title="🛑 Nova denúncia (via /denunciar)", color=discord.Color.dark_red(), timestamp=ts)
+    embed.add_field(name="Autor", value=f"{author} (`{author.id}`)", inline=True)
+    embed.add_field(name="Servidor", value=f"{guild.name} (`{guild.id}`)", inline=True)
+    embed.add_field(name="Canal de origem", value=f"{channel_origin.mention} (`{channel_origin.id}`)", inline=True)
+    embed.add_field(name="Categoria", value=categoria.name, inline=True)
+
+    if detalhes:
+        txt = detalhes.strip()
+        if len(txt) > 4000:
+            txt = txt[:3997] + "..."
+        embed.add_field(name="Descrição", value=txt, inline=False)
+
+    if link:
+        embed.add_field(name="Link", value=link, inline=False)
+
+    embed.set_footer(text=f"Denúncia enviada por {author.display_name} • {author.id}")
+
+    attachments = [a for a in (anexo1, anexo2, anexo3) if a is not None]
+    files_to_send = []
+    failed = []
+    for a in attachments:
+        try:
+            f = await a.to_file(use_cached=True)
+            files_to_send.append(f)
+        except Exception as e:
+            print(f"[{INSTANCE_ID}] Erro ao baixar attachment {getattr(a,'url',None)}: {e}")
+            failed.append(getattr(a, "url", str(a)))
+
+    mention_admin = ""
+    if ADMIN_ROLE_ID:
+        role = guild.get_role(ADMIN_ROLE_ID)
+        if role:
+            mention_admin = role.mention + " "
+
+    try:
+        if files_to_send:
+            sent = await report_channel.send(content=mention_admin, embed=embed, files=files_to_send)
+        else:
+            sent = await report_channel.send(content=mention_admin, embed=embed)
+
+        if failed:
+            await report_channel.send(f"Atenção: alguns attachments não puderam ser baixados: " + ", ".join(failed))
+    except Exception as e:
+        print(f"[{INSTANCE_ID}] Erro ao enviar denúncia para o canal: {e}")
+        await interaction.followup.send("❌ Erro ao encaminhar denúncia. Tente novamente mais tarde.", ephemeral=True)
+        return
+
+    await interaction.followup.send("✅ Denúncia enviada com sucesso. A equipe responsável será notificada.", ephemeral=True)
+
+@denunciar.error
+async def denunciar_error(interaction: discord.Interaction, error):
+    try:
+        print(f"[{INSTANCE_ID}] Erro no /denunciar: {error}")
+        await interaction.followup.send("❌ Ocorreu um erro ao processar sua denúncia.", ephemeral=True)
+    except Exception:
+        pass
+
 # on_ready
 @bot.event
 async def on_ready():
     print(f"[{INSTANCE_ID}] ✅ Bot online como {bot.user}")
+    try:
+        # sincroniza slash commands (global) — se preferir por guild, troque para bot.tree.sync(guild=...)
+        await bot.tree.sync()
+        print(f"[{INSTANCE_ID}] Slash commands sincronizados.")
+    except Exception as e:
+        print(f"[{INSTANCE_ID}] Erro ao sincronizar slash commands: {e}")
     try:
         bot.add_view(BoosterRankView([]))
     except Exception:
