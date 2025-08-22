@@ -1,4 +1,4 @@
-# main.py — ranking + /denunciar (slash) + boas-vindas/saída
+# main.py — ranking + /denunciar (slash) + boas-vindas/saída (com auto-role)
 import os
 import sys
 import json
@@ -102,6 +102,8 @@ REPORT_CHANNEL_ID = _int_env("REPORT_CHANNEL_ID", 0)
 ADMIN_ROLE_ID = _int_env("ADMIN_ROLE_ID", 0)
 WELCOME_CHANNEL_ID = _int_env("WELCOME_CHANNEL_ID", 0)
 WELCOME_LOG_CHANNEL_ID = _int_env("WELCOME_LOG_CHANNEL_ID", 0)
+# NOVO: ID do cargo que será dado automaticamente ao entrar (opcional)
+MEMBER_ROLE_ID = _int_env("MEMBER_ROLE_ID", 0)
 
 GUILD_ID = _int_env("GUILD_ID", 1213316038805164093)
 BOOSTER_ROLE_ID = _int_env("BOOSTER_ROLE_ID", 1406307445306818683)
@@ -564,6 +566,10 @@ def _build_leave_content(member: discord.Member) -> str:
 @bot.event
 async def on_member_join(member: discord.Member):
     try:
+        # não processa bots
+        if member.bot:
+            return
+
         guild = member.guild
         if not guild:
             return
@@ -577,23 +583,61 @@ async def on_member_join(member: discord.Member):
                 channel = None
         if channel is None:
             print(f"[{INSTANCE_ID}] Canal de welcome não encontrado para guild {guild.id}; ignorando welcome.")
-            return
-
-        embed = _build_welcome_embed(member)
-        try:
-            # send mention in content to guarantee the ping, embed uses display_name so no raw <@id> inside it
-            await channel.send(content=member.mention, embed=embed, allowed_mentions=discord.AllowedMentions(users=True))
-        except Exception as e:
-            print(f"[{INSTANCE_ID}] Erro ao enviar mensagem de boas-vindas: {e}")
-
-        if WELCOME_LOG_CHANNEL_ID:
+        else:
+            embed = _build_welcome_embed(member)
             try:
-                log_ch = guild.get_channel(WELCOME_LOG_CHANNEL_ID)
-                if isinstance(log_ch, discord.TextChannel):
-                    # logs: do not ping, only send embed
-                    await log_ch.send(embed=embed)
+                # send mention in content to guarantee the ping, embed uses display_name so no raw <@id> inside it
+                await channel.send(content=member.mention, embed=embed, allowed_mentions=discord.AllowedMentions(users=True))
             except Exception as e:
-                print(f"[{INSTANCE_ID}] Erro ao enviar welcome para canal de log: {e}")
+                print(f"[{INSTANCE_ID}] Erro ao enviar mensagem de boas-vindas: {e}")
+
+            if WELCOME_LOG_CHANNEL_ID:
+                try:
+                    log_ch = guild.get_channel(WELCOME_LOG_CHANNEL_ID)
+                    if isinstance(log_ch, discord.TextChannel):
+                        # logs: do not ping, only send embed
+                        await log_ch.send(embed=embed)
+                except Exception as e:
+                    print(f"[{INSTANCE_ID}] Erro ao enviar welcome para canal de log: {e}")
+
+        # ---------- auto-role: tenta atribuir cargo de membro ----------
+        role = None
+        # 1) se o ID está definido pelas envs, tenta pegar diretamente
+        if MEMBER_ROLE_ID:
+            try:
+                role = guild.get_role(MEMBER_ROLE_ID)
+            except Exception:
+                role = None
+
+        # 2) se não encontrou por ID, tenta achar por nome comum
+        if role is None:
+            candidate_names = {"membro", "member", "user", "usuario", "usuário", "participante"}
+            role = next((r for r in guild.roles if r.name.lower() in candidate_names), None)
+
+        # 3) se achou, verifica permissões/posição e tenta atribuir
+        if role:
+            try:
+                # verifica se o bot tem manage_roles
+                me = guild.me
+                if me is None:
+                    print(f"[{INSTANCE_ID}] Não foi possível recuperar guild.me para guild {guild.id}.")
+                else:
+                    # permission check
+                    if not guild.me.guild_permissions.manage_roles:
+                        print(f"[{INSTANCE_ID}] Bot não tem 'Manage Roles' — impossível atribuir cargo '{role.name}'.")
+                    else:
+                        # posição do cargo do bot deve ser maior que a posição do cargo a ser atribuído
+                        if me.top_role.position <= role.position:
+                            print(f"[{INSTANCE_ID}] Cargo do bot está abaixo ou igual ao cargo '{role.name}' (bot top: {me.top_role.position} <= role: {role.position}). Ajuste a posição do cargo do bot.")
+                        else:
+                            await member.add_roles(role, reason="Auto-role: atribuído ao entrar no servidor")
+                            print(f"[{INSTANCE_ID}] Cargo '{role.name}' atribuído a {member} ({member.id})")
+            except discord.Forbidden:
+                print(f"[{INSTANCE_ID}] Sem permissão para atribuir o cargo '{role.name}'. Verifique 'Manage Roles' e a posição do cargo do bot.")
+            except Exception as e:
+                print(f"[{INSTANCE_ID}] Erro ao adicionar cargo '{getattr(role,'name',role)}' a {member}: {e}")
+        else:
+            print(f"[{INSTANCE_ID}] Cargo de membro não encontrado (MEMBER_ROLE_ID={MEMBER_ROLE_ID}). Não foi atribuído cargo automático.")
 
     except Exception as e:
         print(f"[{INSTANCE_ID}] Exception em on_member_join: {e}")
