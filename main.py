@@ -1,4 +1,4 @@
-# main.py — ranking + /denunciar (slash)
+# main.py — ranking + /denunciar (slash) + boas-vindas/saída
 import os
 import sys
 import json
@@ -97,9 +97,11 @@ if TOKEN:
 if not TOKEN:
     raise RuntimeError("❌ Erro: DISCORD_TOKEN/TOKEN não encontrado nas env vars nem em /etc/secrets.")
 
-# IDs/Config para denúncias (opcionais)
+# IDs/Config
 REPORT_CHANNEL_ID = _int_env("REPORT_CHANNEL_ID", 0)
 ADMIN_ROLE_ID = _int_env("ADMIN_ROLE_ID", 0)
+WELCOME_CHANNEL_ID = _int_env("WELCOME_CHANNEL_ID", 0)
+WELCOME_LOG_CHANNEL_ID = _int_env("WELCOME_LOG_CHANNEL_ID", 0)
 
 GUILD_ID = _int_env("GUILD_ID", 1213316038805164093)
 BOOSTER_ROLE_ID = _int_env("BOOSTER_ROLE_ID", 1406307445306818683)
@@ -146,12 +148,8 @@ def format_relative_time(boost_time):
         parts.append(f"{seconds} segundo{'s' if seconds > 1 else ''}")
     return "há " + ", ".join(parts[:-1]) + (" e " + parts[-1] if len(parts) > 1 else parts[0])
 
-# ---------- Novo: cria múltiplos embeds (um por usuário) ----------
-def build_embeds_for_page(boosters, page=0, per_page=5, title_prefix="🏆 Top Boosters"):
-    """
-    Retorna uma list[discord.Embed] contendo até per_page embeds,
-    cada embed representa um usuário com seu thumbnail (avatar) e descrição.
-    """
+# ---------- Ranking embeds (1 embed por usuário) ----------
+def build_embeds_for_page(boosters, page=0, per_page=5):
     embeds = []
     start = page
     end = min(page + per_page, len(boosters))
@@ -159,7 +157,6 @@ def build_embeds_for_page(boosters, page=0, per_page=5, title_prefix="🏆 Top B
         display_name = getattr(member, "display_name", getattr(member, "name", f"User {getattr(member,'id','???')}"))
         formatted_time = format_relative_time(boost_time)
         embed = discord.Embed(title=f"{idx}. {display_name}", description=f"🕒 Boostando desde {formatted_time}", color=discord.Color.purple())
-        # thumbnail (avatar)
         try:
             avatar_url = None
             if hasattr(member, "display_avatar"):
@@ -170,7 +167,6 @@ def build_embeds_for_page(boosters, page=0, per_page=5, title_prefix="🏆 Top B
                 embed.set_thumbnail(url=avatar_url)
         except Exception:
             pass
-        # footer apenas na PRIMEIRA embed para evitar repetição visual (opcional)
         if idx == 1 + page:
             embed.set_footer(text=f"Exibindo {start + 1}-{end} de {len(boosters)} boosters")
         embeds.append(embed)
@@ -395,12 +391,8 @@ async def boosttime(ctx, member: discord.Member = None):
     start_time = datetime.fromisoformat(boosters_data[user_id_str])
     await ctx.send(f"{member.display_name} está boostando {format_relative_time(start_time)}")
 
-# -------------------- Denúncias: helpers + slash command --------------------
+# -------------------- Denúncias (slash) --------------------
 async def ensure_report_channel(guild: discord.Guild) -> Optional[discord.TextChannel]:
-    """
-    Garante que exista um canal de denúncias (TextChannel).
-    Usa REPORT_CHANNEL_ID / ADMIN_ROLE_ID env vars se fornecidas, senão procura/cria.
-    """
     global REPORT_CHANNEL_ID
     if REPORT_CHANNEL_ID:
         ch = guild.get_channel(REPORT_CHANNEL_ID)
@@ -408,12 +400,10 @@ async def ensure_report_channel(guild: discord.Guild) -> Optional[discord.TextCh
             return ch
         REPORT_CHANNEL_ID = 0
 
-    # procura por canal existente
     for c in guild.text_channels:
         if c.name.lower() in ("denuncias", "denúncias", "reports"):
             return c
 
-    # tenta criar se possível
     try:
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(view_channel=False, read_messages=False),
@@ -431,7 +421,6 @@ async def ensure_report_channel(guild: discord.Guild) -> Optional[discord.TextCh
         print(f"[{INSTANCE_ID}] Não foi possível criar canal de denúncias: {e}")
         return None
 
-# categorias (choices)
 CATEGORY_CHOICES = [
     app_commands.Choice(name="Spam / Publicidade", value="spam"),
     app_commands.Choice(name="Assédio / Abuso", value="assedio"),
@@ -442,7 +431,7 @@ CATEGORY_CHOICES = [
 @bot.tree.command(name="denunciar", description="Enviar denúncia para a equipe (admins receberão).")
 @app_commands.describe(
     categoria="Categoria da denúncia",
-    detalhes="Descreva o que aconteceu (opcional, máximo ~4000 caracteres).",
+    detalhes="Descreva o que aconteceu (opcional).",
     link="Link de referência (opcional)",
     anexo1="Arquivo 1 (opcional)",
     anexo2="Arquivo 2 (opcional)",
@@ -535,12 +524,117 @@ async def denunciar_error(interaction: discord.Interaction, error):
     except Exception:
         pass
 
+# -------------------- BOAS-VINDAS / SAÍDA --------------------
+# convert color from your JSON negative value if desired
+_WELCOME_COLOR_RAW = -2342853
+_WELCOME_COLOR = _WELCOME_COLOR_RAW & 0xFFFFFF
+
+def _find_welcome_channel(guild: discord.Guild) -> Optional[discord.TextChannel]:
+    if WELCOME_CHANNEL_ID:
+        ch = guild.get_channel(WELCOME_CHANNEL_ID)
+        if isinstance(ch, discord.TextChannel):
+            return ch
+    candidates = {"welcome", "welcomes", "boas-vindas", "bem-vindos", "entradas", "entrada", "welcome-channel"}
+    for c in guild.text_channels:
+        if c.name.lower() in candidates:
+            return c
+    return None
+
+def _build_welcome_embed(member: discord.Member) -> discord.Embed:
+    title = f"``` {member.mention} | 𝘽𝙚𝙢-𝙫𝙞𝙣𝙙𝙤(𝙖)! 👋```"
+    description = f"```Seja bem vindo (a) {member.mention}, agradeço por ter entrado no servidor, espero que goste dele, jogue e converse muito.```"
+    embed = discord.Embed(title=title, description=description, color=discord.Color(_WELCOME_COLOR))
+    try:
+        avatar_url = member.display_avatar.url
+        embed.set_thumbnail(url=avatar_url)
+    except Exception:
+        pass
+    embed.add_field(
+        name="📢│𝙁𝙞𝙦𝙪𝙚 𝙖𝙩𝙚𝙣𝙩𝙤!",
+        value="Leias as regras no canal: <#1213332268618096690>\nDuvidas e sugestões no canal: <#1259311950958170205>\nAgora vai lá aproveitar 😁",
+        inline=True
+    )
+    return embed
+
+def _build_leave_content(member: discord.Member) -> str:
+    return f"({member.mention} saiu do servidor) Triste, mas vá com Deus meu mano."
+
+@bot.event
+async def on_member_join(member: discord.Member):
+    try:
+        guild = member.guild
+        if not guild:
+            return
+        channel = _find_welcome_channel(guild)
+        if channel is None and WELCOME_CHANNEL_ID:
+            try:
+                ch = guild.get_channel(WELCOME_CHANNEL_ID)
+                if isinstance(ch, discord.TextChannel):
+                    channel = ch
+            except Exception:
+                channel = None
+        if channel is None:
+            print(f"[{INSTANCE_ID}] Canal de welcome não encontrado para guild {guild.id}; ignorando welcome.")
+            return
+
+        embed = _build_welcome_embed(member)
+        try:
+            await channel.send(embed=embed)
+        except Exception as e:
+            print(f"[{INSTANCE_ID}] Erro ao enviar mensagem de boas-vindas: {e}")
+
+        if WELCOME_LOG_CHANNEL_ID:
+            try:
+                log_ch = guild.get_channel(WELCOME_LOG_CHANNEL_ID)
+                if isinstance(log_ch, discord.TextChannel):
+                    await log_ch.send(embed=embed)
+            except Exception as e:
+                print(f"[{INSTANCE_ID}] Erro ao enviar welcome para canal de log: {e}")
+
+    except Exception as e:
+        print(f"[{INSTANCE_ID}] Exception em on_member_join: {e}")
+
+@bot.event
+async def on_member_remove(member: discord.Member):
+    try:
+        guild = member.guild
+        if not guild:
+            return
+        channel = _find_welcome_channel(guild)
+        if channel is None and WELCOME_CHANNEL_ID:
+            try:
+                ch = guild.get_channel(WELCOME_CHANNEL_ID)
+                if isinstance(ch, discord.TextChannel):
+                    channel = ch
+            except Exception:
+                channel = None
+
+        content = _build_leave_content(member)
+
+        if channel:
+            try:
+                await channel.send(content)
+            except Exception as e:
+                print(f"[{INSTANCE_ID}] Erro ao enviar mensagem de saída: {e}")
+        else:
+            print(f"[{INSTANCE_ID}] Canal de welcome/leave não encontrado para guild {guild.id}; saída não enviada.")
+
+        if WELCOME_LOG_CHANNEL_ID:
+            try:
+                log_ch = guild.get_channel(WELCOME_LOG_CHANNEL_ID)
+                if isinstance(log_ch, discord.TextChannel):
+                    await log_ch.send(content)
+            except Exception as e:
+                print(f"[{INSTANCE_ID}] Erro ao enviar leave para canal de log: {e}")
+
+    except Exception as e:
+        print(f"[{INSTANCE_ID}] Exception em on_member_remove: {e}")
+
 # on_ready
 @bot.event
 async def on_ready():
     print(f"[{INSTANCE_ID}] ✅ Bot online como {bot.user}")
     try:
-        # sincroniza slash commands (global) — se preferir por guild, troque para bot.tree.sync(guild=...)
         await bot.tree.sync()
         print(f"[{INSTANCE_ID}] Slash commands sincronizados.")
     except Exception as e:
