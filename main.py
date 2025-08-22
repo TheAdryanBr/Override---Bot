@@ -541,7 +541,7 @@ def _find_welcome_channel(guild: discord.Guild) -> Optional[discord.TextChannel]
     return None
 
 def _build_welcome_embed(member: discord.Member) -> discord.Embed:
-    title = f"``` {member.mention} | 𝘽𝙚𝙢-𝙫𝙞𝙣𝙙𝙤(𝙖)! 👋```"
+    title = f" {member.mention} | 𝘽𝙚𝙢-𝙫𝙞𝙣𝙙𝙤(𝙖)! 👋"
     description = f"```Seja bem vindo (a) {member.mention}, agradeço por ter entrado no servidor, espero que goste dele, jogue e converse muito.```"
     embed = discord.Embed(title=title, description=description, color=discord.Color(_WELCOME_COLOR))
     try:
