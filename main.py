@@ -111,15 +111,16 @@ CUSTOM_BOOSTER_ROLE_ID = _int_env("CUSTOM_BOOSTER_ROLE_ID", BOOSTER_ROLE_ID)
 
 # ================== CONFIG DE VOICE ROOMS DINÂMICOS ==================
 CANAL_FIXO_CONFIG = {
-    1214984821059747880: {"categoria_id": 1214984727501742080, "prefixo_nome": "Call│"},
-    1213318370770952192: {"categoria_id": 1213316039350296637, "prefixo_nome": "Call│"},
-    333333333333333333: {"categoria_id": 1213319157639020564, "prefixo_nome": "♨│Java│"},
+    1406308661810171965: {"categoria_id": 1213316039350296637, "prefixo_nome": "Call│"},
+    1404889040007725107: {"categoria_id": 1213319157639020564, "prefixo_nome": "♨│Java│"},
     1213319477429801011: {"categoria_id": 1213319157639020564, "prefixo_nome": "🪨|Bedrock|"},
     1213321053196263464: {"categoria_id": 1213319620287664159, "prefixo_nome": "🎧│Call│"},
     1213322485479637012: {"categoria_id": 1213322073594793994, "prefixo_nome": "👥│Dupla│"},
     1213322743123148920: {"categoria_id": 1213322073594793994, "prefixo_nome": "👥│Trio│"},
     1213322826564767776: {"categoria_id": 1213322073594793994, "prefixo_nome": "👥│Squad│"},
     1216123178548465755: {"categoria_id": 1216123032138154008, "prefixo_nome": "👥│Duo│"},
+    1216123306579595274: {"categoria_id": 1216123032138154008, "prefixo_nome": "👥│Trio│"},
+    1216123421688205322: {"categoria_id": 1216123032138154008, "prefixo_nome": "👥│Team│"},
     1213533210907246592: {"categoria_id": 1213532914520690739, "prefixo_nome": "🎧│Sala│"},
 }
 
