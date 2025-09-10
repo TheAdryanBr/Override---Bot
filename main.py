@@ -109,6 +109,24 @@ GUILD_ID = _int_env("GUILD_ID", 1213316038805164093)
 BOOSTER_ROLE_ID = _int_env("BOOSTER_ROLE_ID", 1406307445306818683)
 CUSTOM_BOOSTER_ROLE_ID = _int_env("CUSTOM_BOOSTER_ROLE_ID", BOOSTER_ROLE_ID)
 
+# ================== CONFIG DE VOICE ROOMS DINÂMICOS ==================
+CANAL_FIXO_CONFIG = {
+    1214984821059747880: {"categoria_id": 1214984727501742080, "prefixo_nome": "Call│"},
+    1213318370770952192: {"categoria_id": 1213316039350296637, "prefixo_nome": "Call│"},
+    333333333333333333: {"categoria_id": 1213319157639020564, "prefixo_nome": "♨│Java│"},
+    1213319477429801011: {"categoria_id": 1213319157639020564, "prefixo_nome": "🪨|Bedrock|"},
+    1213321053196263464: {"categoria_id": 1213319620287664159, "prefixo_nome": "🎧│Call│"},
+    1213322485479637012: {"categoria_id": 1213322073594793994, "prefixo_nome": "👥│Dupla│"},
+    1213322743123148920: {"categoria_id": 1213322073594793994, "prefixo_nome": "👥│Trio│"},
+    1213322826564767776: {"categoria_id": 1213322073594793994, "prefixo_nome": "👥│Squad│"},
+    1216123178548465755: {"categoria_id": 1216123032138154008, "prefixo_nome": "👥│Duo│"},
+    1213533210907246592: {"categoria_id": 1213532914520690739, "prefixo_nome": "🎧│Sala│"},
+}
+
+# Guarda os canais criados para apagar depois
+voice_rooms_criados = {}
+
+
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -707,6 +725,35 @@ async def update_booster_message():
         print(f"[{INSTANCE_ID}] 🔄 Mensagem fixa do ranking atualizada automaticamente")
     except Exception as e:
         print(f"[{INSTANCE_ID}] ❌ Erro ao atualizar mensagem fixa: {e}")
+
+# ================== EVENTO PARA VOICE ROOMS DINÂMICOS ==================
+@bot.event
+async def on_voice_state_update(member, before, after):
+    # Criar canal se entrar em canal fixo
+    if after.channel and after.channel.id in CANAL_FIXO_CONFIG:
+        cfg = CANAL_FIXO_CONFIG[after.channel.id]
+        categoria = member.guild.get_channel(cfg["categoria_id"])
+        prefixo = cfg["prefixo_nome"]
+
+        novo_canal = await member.guild.create_voice_channel(
+            name=f"{prefixo}{member.display_name}",
+            category=categoria
+        )
+        await member.move_to(novo_canal)
+
+        voice_rooms_criados[novo_canal.id] = {"owner": member.id, "fixo": after.channel.id}
+        print(f"[{INSTANCE_ID}] 🎤 Canal criado: {novo_canal.name} ({novo_canal.id})")
+
+    # Deletar canal se ficar vazio
+    if before.channel and before.channel.id in voice_rooms_criados:
+        canal = before.channel
+        if len(canal.members) == 0:
+            try:
+                await canal.delete()
+                del voice_rooms_criados[canal.id]
+                print(f"[{INSTANCE_ID}] ❌ Canal apagado: {canal.name} ({canal.id})")
+            except Exception as e:
+                print(f"[{INSTANCE_ID}] Erro ao deletar canal {canal.id}: {e}")
 
 # start
 def start_bot():
