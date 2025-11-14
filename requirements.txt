@@ -4,3 +4,4 @@ python-dotenv
 PyNaCl
 aiohttp
 Pillow
+aiohttp
