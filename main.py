@@ -4,6 +4,9 @@ import sys
 import json
 import re
 import asyncio
+import aiohttp
+import random
+import logging as _logging
 import traceback
 import time
 import uuid
@@ -130,6 +133,67 @@ voice_rooms_criados = {}
 
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
+
+_log_bg = _logging.getLogger("bg_traffic")
+
+# intervalos (segundos) - pode ajustar via env vars se quiser
+BG_MIN_DELAY = int(os.environ.get("BG_MIN_DELAY", 5 * 60))   # 5 minutos
+BG_MAX_DELAY = int(os.environ.get("BG_MAX_DELAY", 20 * 60))  # 20 minutos
+
+# endpoints públicos leves para gerar tráfego de saída (não pingam seu próprio serviço)
+BG_ENDPOINTS = [
+    "https://api.github.com/zen",
+    "https://httpbin.org/get"
+]
+
+BG_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (BotKeepAlive)",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+}
+
+async def _background_traffic_loop():
+    """
+    Loop infinito que cria tráfego de saída em intervalos aleatórios.
+    Mantemos uma única ClientSession para todo o tempo para ser eficiente.
+    """
+    _log_bg.info("Background traffic loop iniciado.")
+    try:
+        async with aiohttp.ClientSession() as session:
+            while True:
+                delay = random.randint(BG_MIN_DELAY, BG_MAX_DELAY)
+                _log_bg.info(f"bg sleeping {delay}s (min={BG_MIN_DELAY} max={BG_MAX_DELAY})")
+                await asyncio.sleep(delay)
+
+                url = random.choice(BG_ENDPOINTS)
+                try:
+                    # timeout curto para não travar
+                    async with session.get(url, headers=BG_HEADERS, timeout=15) as resp:
+                        # não precisamos do corpo inteiro — apenas garantir requisição
+                        text = await resp.text()
+                        _log_bg.info(f"bg ping -> {url} status={resp.status} len={len(text) if text else 0}")
+                except Exception as e:
+                    _log_bg.warning(f"bg ping falhou para {url}: {e}")
+    except asyncio.CancelledError:
+        _log_bg.info("Background traffic loop cancelado.")
+    except Exception as e:
+        _log_bg.exception("Erro fatal no background traffic loop: %s", e)
+
+# garante que a task seja iniciada apenas 1 vez
+async def _start_background_traffic_once():
+    if getattr(bot, "_bg_task_started", False):
+        return
+    bot._bg_task_started = True
+    # cria task no loop do bot
+    bot.loop.create_task(_background_traffic_loop())
+
+# registra um listener minimalista: ao conectar, inicializa a task (não substitui eventos on_ready existentes)
+@bot.event
+async def _bg_on_ready_starter():
+    # tenta iniciar a task (a função cuida para não criar duplicadas)
+    try:
+        await _start_background_traffic_once()
+    except Exception:
+        _log_bg.exception("Falha ao iniciar background traffic task no on_ready.")
 
 INSTANCE_ID = str(uuid.uuid4())[:8]
 print(f"🚀 Instância iniciada com ID: {INSTANCE_ID}")
