@@ -42,20 +42,19 @@ from flask import Flask
 from threading import Thread
 
 # -------------------- KEEP ALIVE (Flask) --------------------
+from flask import Flask
+import os
+import threading
+
 app = Flask('')
+
 @app.route('/')
 def home():
     return "Bot está rodando!"
+
 @app.route('/health')
 def health():
     return "ok", 200
-
-def run_flask():
-    app.run(host='0.0.0.0', port=8080)
-
-def keep_alive():
-    t = Thread(target=run_flask, daemon=True)
-    t.start()
 
 # -------------------- MULTI-INSTANCE GUARD --------------------
 if os.environ.get("RUNNING_INSTANCE") == "1":
@@ -826,15 +825,26 @@ async def on_voice_state_update(member, before, after):
                 print(f"[{INSTANCE_ID}] Erro ao deletar canal {canal.id}: {e}")
 
 # start
-def start_bot():
-    try:
-        keep_alive()
-        bot.run(TOKEN)
-    except Exception as e:
-        print("❌ Erro ao iniciar o bot:", type(e).__name__, "-", e)
-        traceback.print_exc()
-        time.sleep(5)
-        sys.exit(1)
+def _start_bot_thread():
+    """
+    Inicia o bot do Discord em uma thread daemon para que o Flask
+    possa rodar em primeiro plano (requisito do Render Web Service).
+    """
+    def _run():
+        try:
+            bot.run(TOKEN)
+        except Exception as e:
+            print("❌ Erro ao iniciar o bot (thread):", type(e).__name__, "-", e)
+            traceback.print_exc()
+            # se a thread falhar, apenas logamos; o processo principal (Flask) continua atendendo
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
 
 if __name__ == "__main__":
-    start_bot()
+    # inicia o bot em background (thread daemon)
+    _start_bot_thread()
+
+    # inicia o Flask como processo principal — usa a porta definida pelo Render
+    port = int(os.environ.get("PORT", 8080))
+    # host 0.0.0.0 para aceitar conexões externas
+    app.run(host="0.0.0.0", port=port)
