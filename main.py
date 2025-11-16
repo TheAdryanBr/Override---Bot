@@ -46,6 +46,9 @@ app = Flask('')
 @app.route('/')
 def home():
     return "Bot está rodando!"
+@app.route('/health')
+def health():
+    return "ok", 200
 def run_flask():
     app.run(host='0.0.0.0', port=8080)
 def keep_alive():
