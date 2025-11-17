@@ -2,7 +2,7 @@
 import os
 import json
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import discord
 from discord.ext import commands
 from discord.ui import View, button
@@ -13,7 +13,7 @@ META_FILE = os.environ.get("BOOSTERS_META_FILE", "boosters_meta.json")
 GUILD_ID = int(os.environ.get("GUILD_ID", 0))
 BOOSTER_ROLE_ID = int(os.environ.get("BOOSTER_ROLE_ID", 0))
 CUSTOM_BOOSTER_ROLE_ID = int(os.environ.get("CUSTOM_BOOSTER_ROLE_ID", BOOSTER_ROLE_ID))
-# canal fixo para o ranking (padrão pro que você informou)
+# canal fixo para o ranking (padrão que você informou)
 BOOSTER_RANK_CHANNEL_ID = int(os.environ.get("BOOSTER_RANK_CHANNEL_ID", 1415478538114564166))
 
 # ------------------ Helpers de arquivo ------------------
@@ -75,9 +75,11 @@ def build_embeds_for_page(boosters, page=0, per_page=5):
     for idx, (member, boost_time) in enumerate(boosters[start:end], start=1 + page):
         display_name = getattr(member, "display_name", getattr(member, "name", f"User {getattr(member,'id','???')}"))
         formatted_time = format_relative_time(boost_time)
-        embed = discord.Embed(title=f"{idx}. {display_name}",
-                              description=f"🕒 Boostando desde {formatted_time}",
-                              color=discord.Color.purple())
+        embed = discord.Embed(
+            title=f"{idx}. {display_name}",
+            description=f"🕒 Boostando desde {formatted_time}",
+            color=discord.Color.purple()
+        )
         try:
             avatar_url = None
             if hasattr(member, "display_avatar"):
@@ -215,12 +217,7 @@ class BoosterCog(commands.Cog):
         self.fixed_channel_id = self.meta.get("fixed_channel_id")
         self.update_task = None
 
-    def _save_fixed_message(self):
-        self.data["_fixed_message_id"] = self.fixed_message_id
-        self.data["_fixed_channel_id"] = self.fixed_channel_id
-        save_data(self.data)
-
-    # ------------------ util ------------------
+    # save meta (fixed message ids)
     def _save_state(self):
         self.meta["fixed_message_id"] = self.fixed_message_id
         self.meta["fixed_channel_id"] = self.fixed_channel_id
@@ -230,177 +227,148 @@ class BoosterCog(commands.Cog):
         ch = self.bot.get_channel(BOOSTER_RANK_CHANNEL_ID)
         return ch
 
-    # ------------------ public commands (hybrid) ------------------
-@commands.hybrid_command(name="boosters", with_app_command=True)
-async def boosters(self, ctx):
-    is_app = ctx.interaction is not None
-    """
-    Comando híbrido: funciona como !boosters e /boosters.
-    - Prefix: apaga comando do usuário e envia aviso por DM.
-    - Slash: envia resposta ephemeral.
-    - Cria/gerencia a mensagem fixa no canal configurado.
-    """
-    # Prefix → tentar apagar mensagem do usuário
-    if not is_app:
-        try:
-            await ctx.message.delete()
-        except Exception:
-            pass
-
-    # Verificar se já existe mensagem fixa
-    exists = False
-    if self.fixed_message_id and self.fixed_channel_id:
-        try:
-            ch = self.bot.get_channel(self.fixed_channel_id)
-            if ch:
-                await ch.fetch_message(self.fixed_message_id)
-                exists = True
-        except Exception:
-            exists = False
-
-    # Se já existe → avisar apenas o usuário
-    if exists:
-        text = f"A mensagem fixa já está ativa no canal <#{BOOSTER_RANK_CHANNEL_ID}>"
-
-        if is_app:
-            await ctx.respond(text, ephemeral=True)
-        else:
-            # DM ou fallback
-            try:
-                await ctx.author.send(text)
-            except:
-                try:
-                    msg = await ctx.send(text)
-                    await asyncio.sleep(8)
-                    await msg.delete()
-                except:
-                    pass
-        return
-
-    # Criar nova mensagem fixa
-    rank_channel = self._get_rank_channel()
-    if rank_channel is None:
-        txt = f"❌ Canal de ranking fixo não encontrado (ID={BOOSTER_RANK_CHANNEL_ID})."
-        if is_app:
-            await ctx.respond(txt, ephemeral=True)
-        else:
-            try:
-                await ctx.author.send(txt)
-            except:
-                m = await ctx.send(txt)
-                await asyncio.sleep(8)
-                await m.delete()
-        return
-
-    # Gerar os boosters atuais
-    boosters = self._get_current_boosters()
-    if not boosters:
-        txt = "❌ Nenhum booster encontrado."
-        if is_app:
-            await ctx.respond(txt, ephemeral=True)
-        else:
-            try:
-                await ctx.author.send(txt)
-            except:
-                m = await ctx.send(txt)
-                await asyncio.sleep(8)
-                await m.delete()
-        return
-
-    # Criar view + embeds
-    view = BoosterRankView(boosters, is_personal=False)
-    view.cog_data = self.data
-
-    embeds = build_embeds_for_page(boosters, page=0, per_page=view.per_page)
-
-    # Enviar mensagem fixa
-    sent = await rank_channel.send(embeds=embeds, view=view)
-
-    # Registrar IDs
-    self.fixed_message_id = sent.id
-    self.fixed_channel_id = rank_channel.id
-    self._save_fixed_message()
-
-    # Resposta para o usuário
-    confirmation = f"✅ Mensagem fixa criada no canal <#{rank_channel.id}>"
-
-    if is_app:
-        await ctx.respond(confirmation, ephemeral=True)
-    else:
-        try:
-            await ctx.author.send(confirmation)
-        except:
-            m = await ctx.send(confirmation)
-            await asyncio.sleep(8)
-            await m.delete()
-
-        # generate boosters list & send message
+    # helper that returns list[(member, start_time)]
+    def _get_current_boosters(self, guild=None):
         boosters = []
-        guild = self.bot.get_guild(GUILD_ID) if GUILD_ID else rank_channel.guild
-        role = None
+        if guild is None:
+            # try configured guild
+            guild = self.bot.get_guild(GUILD_ID) if GUILD_ID else None
         try:
             role = guild.get_role(CUSTOM_BOOSTER_ROLE_ID) if guild else None
         except Exception:
             role = None
 
-        if role:
-            for member in role.members:
-                user_id_str = str(member.id)
-                start_time = None
-                start_time_str = self.data.get(user_id_str)
-                if start_time_str:
-                    try:
-                        start_time = datetime.fromisoformat(start_time_str)
-                    except Exception:
-                        start_time = None
-                if start_time is None:
-                    start_time = member.premium_since if getattr(member, "premium_since", None) else None
-                boosters.append((member, start_time))
-            boosters.sort(key=lambda x: (x[1] is None, x[1] if x[1] is not None else datetime.max))
-        else:
-            # no role found -> send minimal message
+        if not role:
+            return boosters
+
+        for member in role.members:
+            user_id_str = str(member.id)
+            start_time = None
+            start_time_str = self.data.get(user_id_str)
+            if start_time_str:
+                try:
+                    start_time = datetime.fromisoformat(start_time_str)
+                except Exception:
+                    start_time = None
+            if start_time is None:
+                start_time = member.premium_since if getattr(member, "premium_since", None) else None
+            boosters.append((member, start_time))
+
+        boosters.sort(key=lambda x: (x[1] is None, x[1] if x[1] is not None else datetime.max))
+        return boosters
+
+    # ------------------ public commands (hybrid) ------------------
+    @commands.hybrid_command(name="boosters", with_app_command=True)
+    async def boosters(self, ctx):
+        """
+        Comando híbrido: funciona como !boosters e /boosters.
+        - Prefix: apaga comando do usuário e envia aviso por DM.
+        - Slash: responde ephemeral direto.
+        - Cria/gerencia a mensagem fixa no canal configurado.
+        """
+
+        # Detectar se é slash ou prefix
+        is_app = ctx.interaction is not None
+
+        # Prefix → tentar apagar mensagem do usuário
+        if not is_app:
             try:
-                sent = await rank_channel.send("❌ Cargo custom de booster não encontrado para gerar ranking.")
-                self.fixed_message_id = sent.id
-                self.fixed_channel_id = rank_channel.id
-                self._save_state()
+                await ctx.message.delete()
             except Exception:
                 pass
-            txt = f"❌ Cargo de boosters não configurado no servidor."
+
+        # Verificar se já existe mensagem fixa
+        exists = False
+        if self.fixed_message_id and self.fixed_channel_id:
+            try:
+                ch = self.bot.get_channel(self.fixed_channel_id)
+                if ch:
+                    await ch.fetch_message(self.fixed_message_id)
+                    exists = True
+            except Exception:
+                exists = False
+
+        # Se já existe → avisar apenas o usuário
+        if exists:
+            text = f"A mensagem fixa já está ativa no canal <#{BOOSTER_RANK_CHANNEL_ID}>"
             if is_app:
-                await ctx.respond(txt, ephemeral=True)
+                # application context
+                try:
+                    await ctx.respond(text, ephemeral=True)
+                except Exception:
+                    # if respond not available, fallback to sending ephemeral via interaction
+                    try:
+                        await ctx.interaction.response.send_message(text, ephemeral=True)
+                    except Exception:
+                        pass
+            else:
+                # send DM or fallback
+                try:
+                    await ctx.author.send(text)
+                except Exception:
+                    try:
+                        msg = await ctx.send(text)
+                        await asyncio.sleep(8)
+                        await msg.delete()
+                    except Exception:
+                        pass
+            return
+
+        # if not exists -> create it in the fixed channel
+        rank_channel = self._get_rank_channel()
+        if rank_channel is None:
+            txt = f"❌ Canal de ranking fixo não encontrado (ID={BOOSTER_RANK_CHANNEL_ID})."
+            if is_app:
+                try:
+                    await ctx.respond(txt, ephemeral=True)
+                except Exception:
+                    try:
+                        await ctx.interaction.response.send_message(txt, ephemeral=True)
+                    except Exception:
+                        pass
             else:
                 try:
                     await ctx.author.send(txt)
                 except Exception:
-                    pass
+                    try:
+                        m = await ctx.send(txt)
+                        await asyncio.sleep(8)
+                        await m.delete()
+                    except Exception:
+                        pass
             return
 
+        # Gerar os boosters atuais
+        boosters = self._get_current_boosters(guild=rank_channel.guild)
         if not boosters:
-            try:
-                sent = await rank_channel.send("❌ Nenhum booster encontrado.")
-                self.fixed_message_id = sent.id
-                self.fixed_channel_id = rank_channel.id
-                self._save_state()
-            except Exception:
-                pass
             txt = "❌ Nenhum booster encontrado."
             if is_app:
-                await ctx.respond(txt, ephemeral=True)
+                try:
+                    await ctx.respond(txt, ephemeral=True)
+                except Exception:
+                    try:
+                        await ctx.interaction.response.send_message(txt, ephemeral=True)
+                    except Exception:
+                        pass
             else:
                 try:
                     await ctx.author.send(txt)
                 except Exception:
-                    pass
+                    try:
+                        m = await ctx.send(txt)
+                        await asyncio.sleep(8)
+                        await m.delete()
+                    except Exception:
+                        pass
             return
 
-        # create view and send message (always to fixed rank channel)
+        # Criar view + embeds
         view = BoosterRankView(boosters, is_personal=False)
         view.cog_data = self.data
         embeds = build_embeds_for_page(boosters, page=0, per_page=view.per_page)
 
+        # Enviar mensagem fixa (tenta recuperar, senão cria)
         try:
-            # try to recover an existing message first
             if self.fixed_message_id and self.fixed_channel_id:
                 try:
                     ch = self.bot.get_channel(self.fixed_channel_id)
@@ -410,18 +378,23 @@ async def boosters(self, ctx):
                         self.fixed_message_id = msg.id
                         self.fixed_channel_id = ch.id
                         self._save_state()
-                        # respond to user that message was restored/updated
-                        text = f"Mensagem fixa atualizada em <#{BOOSTER_RANK_CHANNEL_ID}>"
+                        confirmation = f"Mensagem fixa atualizada em <#{BOOSTER_RANK_CHANNEL_ID}>"
                         if is_app:
-                            await ctx.respond(text, ephemeral=True)
+                            try:
+                                await ctx.respond(confirmation, ephemeral=True)
+                            except Exception:
+                                try:
+                                    await ctx.interaction.response.send_message(confirmation, ephemeral=True)
+                                except Exception:
+                                    pass
                         else:
                             try:
-                                await ctx.author.send(text)
+                                await ctx.author.send(confirmation)
                             except Exception:
                                 pass
                         return
                 except Exception:
-                    # broken existing message -> will create new below
+                    # existing message broken -> create new
                     pass
 
             sent = await rank_channel.send(embeds=embeds, view=view)
@@ -429,19 +402,28 @@ async def boosters(self, ctx):
             self.fixed_channel_id = rank_channel.id
             self._save_state()
 
-            text = f"Mensagem fixa criada em <#{BOOSTER_RANK_CHANNEL_ID}>"
+            confirmation = f"✅ Mensagem fixa criada no canal <#{rank_channel.id}>"
             if is_app:
-                await ctx.respond(text, ephemeral=True)
+                try:
+                    await ctx.respond(confirmation, ephemeral=True)
+                except Exception:
+                    try:
+                        await ctx.interaction.response.send_message(confirmation, ephemeral=True)
+                    except Exception:
+                        pass
             else:
                 try:
-                    await ctx.author.send(text)
+                    await ctx.author.send(confirmation)
                 except Exception:
                     pass
 
         except Exception as e:
             print("[BOOSTERS] Erro ao enviar mensagem fixa:", type(e).__name__, e)
             if is_app:
-                await ctx.respond("❌ Erro ao criar mensagem fixa.", ephemeral=True)
+                try:
+                    await ctx.respond("❌ Erro ao criar mensagem fixa.", ephemeral=True)
+                except Exception:
+                    pass
             else:
                 try:
                     await ctx.author.send("❌ Erro ao criar mensagem fixa.")
@@ -451,7 +433,6 @@ async def boosters(self, ctx):
     # ------------- test command -------------
     @commands.command(name="testboost")
     async def testboost(self, ctx):
-        # keep old behavior: send a fake ranking in the current channel
         now = datetime.now(timezone.utc)
         fake_boosters = []
         fake_boosters.append((ctx.author, now - timedelta(days=10)))
@@ -530,7 +511,6 @@ async def boosters(self, ctx):
     async def _periodic_update(self):
         while True:
             try:
-                # check every hour; adjust for testing if needed
                 await asyncio.sleep(3600)
                 if self.fixed_message_id and getattr(self, "fixed_channel_id", None):
                     try:
@@ -551,7 +531,6 @@ async def boosters(self, ctx):
 
     # helper to build and edit the fixed message (reused)
     async def _edit_fixed_message(self, msg):
-        # regenerate boosters list
         rank_channel = msg.channel
         guild = self.bot.get_guild(GUILD_ID) if GUILD_ID else rank_channel.guild
         role = None
@@ -598,5 +577,6 @@ async def boosters(self, ctx):
             except Exception:
                 pass
 
+# setup
 async def setup(bot):
     await bot.add_cog(BoosterCog(bot))
