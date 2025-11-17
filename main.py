@@ -83,11 +83,13 @@ COGS = [
 # ===== EVENTO DE SYNC =====
 @bot.event
 async def on_ready():
+    print(f"[LOGADO] {bot.user} está online!")
+
     try:
         synced = await bot.tree.sync()
-        print(f"[SYNC] {len(synced)} comandos sincronizados.")
+        print(f"[SLASH] {len(synced)} comandos sincronizados.")
     except Exception as e:
-        print(f"[SYNC ERRO] {e}")
+        print("[SLASH ERRO]", e)
 
     print(f"Bot iniciado como {bot.user} (ID {bot.user.id})")
 
