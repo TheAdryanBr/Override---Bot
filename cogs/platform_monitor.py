@@ -124,7 +124,7 @@ class PlatformMonitor(commands.Cog):
     # Função de editar mensagem fixa
     # --------------------------------------------------------
     async def _update_status(self, tiktok, youtube, twitch):
-    channel = self.bot.get_channel(PLATFORM_CHANNEL_ID)
+        channel = self.bot.get_channel(PLATFORM_CHANNEL_ID)
     if not channel:
         return
 
@@ -177,4 +177,3 @@ class PlatformMonitor(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(PlatformMonitor(bot))
-
