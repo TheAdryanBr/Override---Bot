@@ -121,4 +121,4 @@ class WelcomeCog(commands.Cog):
             pass
 
 async def setup(bot):
-    bot.add_cog(WelcomeCog(bot))
+    await bot.add_cog(WelcomeCog(bot))
