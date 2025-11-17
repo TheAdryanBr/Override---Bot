@@ -1,4 +1,5 @@
 # cogs/background_traffic.py
+import os
 import asyncio
 import random
 import aiohttp
