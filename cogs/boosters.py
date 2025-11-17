@@ -553,5 +553,5 @@ class BoosterCog(commands.Cog):
             except Exception:
                 pass
 
-def setup(bot):
+async def setup(bot):
     bot.add_cog(BoosterCog(bot))
