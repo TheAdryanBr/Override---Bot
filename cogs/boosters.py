@@ -215,6 +215,11 @@ class BoosterCog(commands.Cog):
         self.fixed_channel_id = self.meta.get("fixed_channel_id")
         self.update_task = None
 
+    def _save_fixed_message(self):
+        self.data["_fixed_message_id"] = self.fixed_message_id
+        self.data["_fixed_channel_id"] = self.fixed_channel_id
+        save_data(self.data)
+
     # ------------------ util ------------------
     def _save_state(self):
         self.meta["fixed_message_id"] = self.fixed_message_id
