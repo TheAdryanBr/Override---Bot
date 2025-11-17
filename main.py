@@ -78,6 +78,7 @@ COGS = [
     "cogs.welcome",
     "cogs.voice_rooms",
     "cogs.background_traffic",
+    "cogs.platform_monitor",
 ]
 
 # ===== EVENTO DE SYNC =====
