@@ -226,68 +226,111 @@ class BoosterCog(commands.Cog):
         return ch
 
     # ------------------ public commands (hybrid) ------------------
-    @commands.hybrid_command(name="boosters", with_app_command=True)
-    async def boosters(self, ctx: commands.Context):
-        """
-        Comando híbrido: funciona como prefix (!boosters) e slash (/boosters).
-        - Prefix: deleta a mensagem do usuário (se possível) e envia DM com status.
-        - Slash: responde ephemeral direto.
-        """
-        # If prefix invocation (Context) -> delete invoking message and DM user
-        is_app = isinstance(ctx, discord.ApplicationContext)
-        if not is_app:
-            # try delete invoking message to keep channel clean
-            try:
-                await ctx.message.delete()
-            except Exception:
-                pass
-        # Check if fixed message exists
-        exists = False
-        if self.fixed_message_id and self.fixed_channel_id:
-            try:
-                ch = self.bot.get_channel(self.fixed_channel_id)
-                if ch:
-                    await ch.fetch_message(self.fixed_message_id)  # will raise if missing
-                    exists = True
-            except Exception:
-                exists = False
+@commands.hybrid_command(name="boosters", with_app_command=True)
+async def boosters(self, ctx: commands.Context):
+    """
+    Comando híbrido: funciona como !boosters e /boosters.
+    - Prefix: apaga comando do usuário e envia aviso por DM.
+    - Slash: envia resposta ephemeral.
+    - Cria/gerencia a mensagem fixa no canal configurado.
+    """
 
-        if exists:
-            text = f"A mensagem fixa já está ativa no canal <#{BOOSTER_RANK_CHANNEL_ID}>"
-            if is_app:
-                # ephemeral response
-                await ctx.respond(text, ephemeral=True)
-            else:
-                # send DM to author as "ephemeral alternative"
-                try:
-                    await ctx.author.send(text)
-                except Exception:
-                    # fallback: send normal message but delete quickly
-                    try:
-                        m = await ctx.send(text)
-                        await asyncio.sleep(8)
-                        await m.delete()
-                    except Exception:
-                        pass
-            return
+    # Detectar se é slash ou prefix
+    is_app = ctx.interaction is not None
 
-        # if not exists -> create it in the fixed channel
-        rank_channel = self._get_rank_channel()
-        if rank_channel is None:
-            txt = f"❌ Canal de ranking fixo não encontrado (id={BOOSTER_RANK_CHANNEL_ID})."
-            if is_app:
-                await ctx.respond(txt, ephemeral=True)
-            else:
+    # Prefix → tentar apagar mensagem do usuário
+    if not is_app:
+        try:
+            await ctx.message.delete()
+        except Exception:
+            pass
+
+    # Verificar se já existe mensagem fixa
+    exists = False
+    if self.fixed_message_id and self.fixed_channel_id:
+        try:
+            ch = self.bot.get_channel(self.fixed_channel_id)
+            if ch:
+                await ch.fetch_message(self.fixed_message_id)
+                exists = True
+        except Exception:
+            exists = False
+
+    # Se já existe → avisar apenas o usuário
+    if exists:
+        text = f"A mensagem fixa já está ativa no canal <#{BOOSTER_RANK_CHANNEL_ID}>"
+
+        if is_app:
+            await ctx.respond(text, ephemeral=True)
+        else:
+            # DM ou fallback
+            try:
+                await ctx.author.send(text)
+            except:
                 try:
-                    await ctx.author.send(txt)
-                except Exception:
-                    try:
-                        m = await ctx.send(txt)
-                        await asyncio.sleep(8)
-                        await m.delete()
-                    except Exception:
-                        pass
-            return
+                    msg = await ctx.send(text)
+                    await asyncio.sleep(8)
+                    await msg.delete()
+                except:
+                    pass
+        return
+
+    # Criar nova mensagem fixa
+    rank_channel = self._get_rank_channel()
+    if rank_channel is None:
+        txt = f"❌ Canal de ranking fixo não encontrado (ID={BOOSTER_RANK_CHANNEL_ID})."
+        if is_app:
+            await ctx.respond(txt, ephemeral=True)
+        else:
+            try:
+                await ctx.author.send(txt)
+            except:
+                m = await ctx.send(txt)
+                await asyncio.sleep(8)
+                await m.delete()
+        return
+
+    # Gerar os boosters atuais
+    boosters = self._get_current_boosters()
+    if not boosters:
+        txt = "❌ Nenhum booster encontrado."
+        if is_app:
+            await ctx.respond(txt, ephemeral=True)
+        else:
+            try:
+                await ctx.author.send(txt)
+            except:
+                m = await ctx.send(txt)
+                await asyncio.sleep(8)
+                await m.delete()
+        return
+
+    # Criar view + embeds
+    view = BoosterRankView(boosters, is_personal=False)
+    view.cog_data = self.data
+
+    embeds = build_embeds_for_page(boosters, page=0, per_page=view.per_page)
+
+    # Enviar mensagem fixa
+    sent = await rank_channel.send(embeds=embeds, view=view)
+
+    # Registrar IDs
+    self.fixed_message_id = sent.id
+    self.fixed_channel_id = rank_channel.id
+    self._save_fixed_message()
+
+    # Resposta para o usuário
+    confirmation = f"✅ Mensagem fixa criada no canal <#{rank_channel.id}>"
+
+    if is_app:
+        await ctx.respond(confirmation, ephemeral=True)
+    else:
+        try:
+            await ctx.author.send(confirmation)
+        except:
+            m = await ctx.send(confirmation)
+            await asyncio.sleep(8)
+            await m.delete()
 
         # generate boosters list & send message
         boosters = []
