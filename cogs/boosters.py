@@ -233,16 +233,13 @@ class BoosterCog(commands.Cog):
     # ------------------ public commands (hybrid) ------------------
 @commands.hybrid_command(name="boosters", with_app_command=True)
 async def boosters(self, ctx):
+    is_app = ctx.interaction is not None
     """
     Comando híbrido: funciona como !boosters e /boosters.
     - Prefix: apaga comando do usuário e envia aviso por DM.
     - Slash: envia resposta ephemeral.
     - Cria/gerencia a mensagem fixa no canal configurado.
     """
-
-    # Detectar se é slash ou prefix
-    is_app = ctx.interaction is not None
-
     # Prefix → tentar apagar mensagem do usuário
     if not is_app:
         try:
