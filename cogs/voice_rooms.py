@@ -46,4 +46,4 @@ class VoiceRoomsCog(commands.Cog):
             pass
 
 async def setup(bot):
-    bot.add_cog(VoiceRoomsCog(bot))
+    await bot.add_cog(VoiceRoomsCog(bot))
