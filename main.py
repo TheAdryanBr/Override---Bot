@@ -1,36 +1,32 @@
-# main.py — carregador e start (mantém compatibilidade Render: Flask em foreground)
+# main.py — CLEAN + FUNCTIONAL VERSION
 import os
 import sys
 import traceback
 import uuid
 import threading
-from importlib import import_module
+import asyncio
 
+import discord
 from discord.ext import commands
 
-# ===== ENV HELPERS (copiado/adaptado do seu original) =====
+# ===== ENV HELPERS =====
 def _int_env(name, default):
     v = os.environ.get(name)
     if v is None:
         return default
-    try:
-        return int(v)
+    try: return int(v)
     except:
-        try:
-            return int(v.strip())
-        except:
-            return default
+        try: return int(v.strip())
+        except: return default
 
 def _read_secret_file(paths):
     for p in paths:
         try:
             if os.path.isfile(p):
-                with open(p, "r") as f:
-                    s = f.read().strip()
-                    if s:
-                        return s
-        except Exception:
-            pass
+                with open(p,"r") as f:
+                    s=f.read().strip()
+                    if s: return s
+        except: pass
     return None
 
 _secret_paths = [
@@ -41,18 +37,22 @@ _secret_paths = [
     "./.env.discord"
 ]
 
-TOKEN = os.getenv("DISCORD_TOKEN") or os.getenv("TOKEN") or _read_secret_file(_secret_paths)
-if TOKEN:
-    TOKEN = TOKEN.strip()
-    if TOKEN.lower().startswith("bot "):
-        TOKEN = TOKEN[4:].strip()
+TOKEN = (
+    os.getenv("DISCORD_TOKEN") or
+    os.getenv("TOKEN") or
+    _read_secret_file(_secret_paths)
+)
 
 if not TOKEN:
-    raise RuntimeError("❌ Erro: DISCORD_TOKEN/TOKEN não encontrado nas env vars nem em /etc/secrets.")
+    raise RuntimeError("❌ DISCORD_TOKEN não encontrado!")
 
-# ====== Configs que seu bot usa (padrão para leitura em cogs também) ======
+TOKEN = TOKEN.strip()
+if TOKEN.lower().startswith("bot "):
+    TOKEN = TOKEN[4:].strip()
+
+# ===== CONFIGS =====
 REPORT_CHANNEL_ID = _int_env("REPORT_CHANNEL_ID", 0)
-ADMIN_ROLE_ID = _int_env("ADMIN_ROLE_ID", 0)
+ADMIN_ROLE_ID    = _int_env("ADMIN_ROLE_ID", 0)
 WELCOME_CHANNEL_ID = _int_env("WELCOME_CHANNEL_ID", 0)
 WELCOME_LOG_CHANNEL_ID = _int_env("WELCOME_LOG_CHANNEL_ID", 0)
 MEMBER_ROLE_ID = _int_env("MEMBER_ROLE_ID", 0)
@@ -61,18 +61,17 @@ GUILD_ID = _int_env("GUILD_ID", 0)
 BOOSTER_ROLE_ID = _int_env("BOOSTER_ROLE_ID", 0)
 CUSTOM_BOOSTER_ROLE_ID = _int_env("CUSTOM_BOOSTER_ROLE_ID", BOOSTER_ROLE_ID)
 
-# ================= Multi-instance guard (mantido) =================
+# ===== ANTI-MULTI INSTANCE =====
 if os.environ.get("RUNNING_INSTANCE") == "1":
-    print("⚠️ Já existe uma instância ativa deste bot. Encerrando...")
+    print("⚠️ Instância já ativa. Abortando.")
     sys.exit()
 os.environ["RUNNING_INSTANCE"] = "1"
 
-# ===== Bot minimal init (interações de comandos/cogs) =====
-import discord
+# ===== BOT INIT =====
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ==== Lista de cogs a carregar ====
+# ===== LISTA DE COGS =====
 COGS = [
     "cogs.boosters",
     "cogs.denuncias",
@@ -81,47 +80,44 @@ COGS = [
     "cogs.background_traffic",
 ]
 
-# Carrega cogs
-async def load_cogs():
-    for cog in COGS:
-        try:
-            await bot.load_extension(cog)
-            print(f"[COG] Carregado: {cog}")
-        except Exception as e:
-            print(f"[COG] ERRO ao carregar {cog}: {e}")
-for cog in COGS:
+# ===== EVENTO DE SYNC =====
+@bot.event
+async def on_ready():
     try:
-        bot.load_extension(cog)
-        print(f"[MAIN] Cog loaded: {cog}")
+        synced = await bot.tree.sync()
+        print(f"[SYNC] {len(synced)} comandos sincronizados.")
     except Exception as e:
-        print(f"[MAIN] Erro ao carregar cog {cog}: {type(e).__name__} {e}")
-        traceback.print_exc()
+        print(f"[SYNC ERRO] {e}")
 
-# Start helpers: inicia bot em thread daemon (para que Flask rode no processo principal)
-async def load_cogs():
+    print(f"Bot iniciado como {bot.user} (ID {bot.user.id})")
+
+# ===== CARREGAMENTO DOS COGS =====
+async def load_all_cogs():
     for cog in COGS:
         try:
             await bot.load_extension(cog)
             print(f"[COG] Carregado: {cog}")
         except Exception as e:
-            print(f"[COG] ERRO ao carregar {cog}: {e}")
-            
+            print(f"[COG ERRO] {cog}: {e}")
+            traceback.print_exc()
+
+# ===== THREAD DO BOT =====
 def _start_bot_thread():
     async def runner():
-        await load_cogs()
+        await load_all_cogs()
         await bot.start(TOKEN)
 
     def thread_target():
         try:
             asyncio.run(runner())
         except Exception as e:
-            print("❌ Erro ao iniciar o bot (thread):", type(e).__name__, "-", e)
+            print("❌ Erro ao iniciar bot:", type(e).__name__, "-", e)
             traceback.print_exc()
 
     t = threading.Thread(target=thread_target, daemon=True)
     t.start()
 
-# Exponha algumas constantes para cogs que importarem main (opcional)
+# ===== EXPOSE CONFIG =====
 bot.MAIN_CONFIG = {
     "REPORT_CHANNEL_ID": REPORT_CHANNEL_ID,
     "ADMIN_ROLE_ID": ADMIN_ROLE_ID,
@@ -134,15 +130,12 @@ bot.MAIN_CONFIG = {
     "INSTANCE_ID": str(uuid.uuid4())[:8],
 }
 
-print(f"[MAIN] Instance id: {bot.MAIN_CONFIG['INSTANCE_ID']}")
+print(f"[MAIN] Instance ID: {bot.MAIN_CONFIG['INSTANCE_ID']}")
 
-# Run: start bot thread, then run Flask (keep_alive) in main thread (Render expects app in foreground)
+# ===== RUN (Render: Flask foreground, bot thread) =====
 if __name__ == "__main__":
-    # Inicia o bot em background (daemon thread)
     _start_bot_thread()
 
-    # Inicia Flask (keep_alive) em foreground — isso mantém o processo vivo e compatível com Render Web Service
     from keep_alive import app, serve_foreground
-
     port = int(os.environ.get("PORT", 8080))
     serve_foreground(app, port=port)
