@@ -102,4 +102,4 @@ class DenunciasCog(commands.Cog):
         await interaction.followup.send("✅ Denúncia enviada com sucesso. A equipe responsável será notificada.", ephemeral=True)
 
 async def setup(bot):
-    bot.add_cog(DenunciasCog(bot))
+    await bot.add_cog(DenunciasCog(bot))
