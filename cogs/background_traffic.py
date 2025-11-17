@@ -50,4 +50,4 @@ class BackgroundTrafficCog(commands.Cog):
             _log.exception("Background traffic fatal: %s", e)
 
 async def setup(bot):
-    bot.add_cog(BackgroundTrafficCog(bot))
+   await bot.add_cog(BackgroundTrafficCog(bot))
