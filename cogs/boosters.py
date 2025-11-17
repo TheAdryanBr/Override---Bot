@@ -554,4 +554,4 @@ class BoosterCog(commands.Cog):
                 pass
 
 async def setup(bot):
-    bot.add_cog(BoosterCog(bot))
+    await bot.add_cog(BoosterCog(bot))
