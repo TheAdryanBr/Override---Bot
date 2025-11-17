@@ -232,7 +232,7 @@ class BoosterCog(commands.Cog):
 
     # ------------------ public commands (hybrid) ------------------
 @commands.hybrid_command(name="boosters", with_app_command=True)
-async def boosters(self, ctx: commands.Context):
+async def boosters(self, ctx):
     """
     Comando híbrido: funciona como !boosters e /boosters.
     - Prefix: apaga comando do usuário e envia aviso por DM.
