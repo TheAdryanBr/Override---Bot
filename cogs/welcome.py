@@ -5,7 +5,7 @@ import discord
 from discord.ext import commands
 
 WELCOME_CHANNEL_ID = int(os.environ.get("WELCOME_CHANNEL_ID", 0))
-WELCOME_LOG_CHANNEL_ID = int(os.environ.get("WELCOME_LOG_CHANNEL_ID", 0))
+WELCOME_LOG_CHANNEL_ID = int(os.environ.get("WELCOME_LOG_CHANNEL_ID") or 0)
 MEMBER_ROLE_ID = int(os.environ.get("MEMBER_ROLE_ID", 0))
 
 _WELCOME_COLOR_RAW = -2342853
