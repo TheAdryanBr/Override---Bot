@@ -98,14 +98,27 @@ for cog in COGS:
         traceback.print_exc()
 
 # Start helpers: inicia bot em thread daemon (para que Flask rode no processo principal)
-def _start_bot_thread():
-    def _run():
+async def load_cogs():
+    for cog in COGS:
         try:
-            bot.run(TOKEN)
+            await bot.load_extension(cog)
+            print(f"[COG] Carregado: {cog}")
+        except Exception as e:
+            print(f"[COG] ERRO ao carregar {cog}: {e}")
+            
+def _start_bot_thread():
+    async def runner():
+        await load_cogs()
+        await bot.start(TOKEN)
+
+    def thread_target():
+        try:
+            asyncio.run(runner())
         except Exception as e:
             print("❌ Erro ao iniciar o bot (thread):", type(e).__name__, "-", e)
             traceback.print_exc()
-    t = threading.Thread(target=_run, daemon=True)
+
+    t = threading.Thread(target=thread_target, daemon=True)
     t.start()
 
 # Exponha algumas constantes para cogs que importarem main (opcional)
