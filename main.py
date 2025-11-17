@@ -82,6 +82,13 @@ COGS = [
 ]
 
 # Carrega cogs
+async def load_cogs():
+    for cog in COGS:
+        try:
+            await bot.load_extension(cog)
+            print(f"[COG] Carregado: {cog}")
+        except Exception as e:
+            print(f"[COG] ERRO ao carregar {cog}: {e}")
 for cog in COGS:
     try:
         bot.load_extension(cog)
