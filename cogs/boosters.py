@@ -303,5 +303,5 @@ class BoosterCog(commands.Cog):
             except Exception:
                 await asyncio.sleep(60)
 
-def setup(bot):
+async def setup(bot):
     bot.add_cog(BoosterCog(bot))
