@@ -167,7 +167,7 @@ class BoosterCog(commands.Cog):
         self.bot.processing_commands.add(ctx.author.id)
         try:
             if self.fixed_message_id:
-                await ctx.send("✅ Mensagem de ranking já está ativa!")
+                await ctx.send("✅ Mensagem de ranking já está ativa")
             else:
                 await self.send_booster_rank(ctx.channel)
         finally:
