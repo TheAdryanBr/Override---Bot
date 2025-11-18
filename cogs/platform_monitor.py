@@ -88,7 +88,7 @@ class PlatformMonitor(commands.Cog):
             color=discord.Color.red()
         )
 
-        embed.set_thumbnail(url="https://i.imgur.com/qU9f7uf.png")  # thumbnail neutra; pode trocar
+        embed.set_thumbnail(url="https://i.imgur.com/qU9f7uf.png")
 
         embed.add_field(
             name="📌 Outras plataformas",
@@ -101,7 +101,6 @@ class PlatformMonitor(commands.Cog):
 
         embed.set_footer(text="Simulação — Nenhuma plataforma foi realmente verificada")
 
-        # Envia a notificação no canal onde o comando foi usado
         await ctx.send(f"{mention_text}", embed=embed)
     # --------------------------------------------------------
     # ROTINA PRINCIPAL
