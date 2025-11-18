@@ -55,6 +55,54 @@ class PlatformMonitor(commands.Cog):
             self.monitor_task.cancel()
         asyncio.create_task(self.session.close())
 
+# ------------------Comando de testes------------------------
+        
+        @commands.command(name="testlive")
+    async def testlive(self, ctx):
+        """
+        Simula uma live no TikTok sem realmente entrar ao vivo.
+        Gera o mesmo embed que o sistema real enviaria.
+        """
+
+        # Cargo a ser mencionado
+        role_id = 1254470641944494131
+        role = ctx.guild.get_role(role_id)
+        mention_text = role.mention if role else "@live"
+
+        # --- Dados simulados do TikTok ---
+        tiktok_title = "TESTE — Live de Simulação"
+        tiktok_game = "Just Chatting (Simulação)"
+        tiktok_url = "https://www.tiktok.com/@TheAdryanBr/live"
+
+        # --- Check falso das outras plataformas ---
+        yt_live = True      # simulação
+        twitch_live = False # simulação
+
+        yt_status = "🔴 Ao vivo" if yt_live else "⚫ Offline"
+        twitch_status = "🔴 Ao vivo" if twitch_live else "⚫ Offline"
+
+        # --- Criação do embed ---
+        embed = discord.Embed(
+            title=f"🔴 Live no TikTok — @TheAdryanBr",
+            description=f"**{tiktok_title}**\n🎮 Jogo: **{tiktok_game}**\n\n👉 **Assista agora:**\n{tiktok_url}",
+            color=discord.Color.red()
+        )
+
+        embed.set_thumbnail(url="https://i.imgur.com/qU9f7uf.png")  # thumbnail neutra; pode trocar
+
+        embed.add_field(
+            name="📌 Outras plataformas",
+            value=(
+                f"**YouTube:** {yt_status}\n"
+                f"**Twitch:** {twitch_status}"
+            ),
+            inline=False
+        )
+
+        embed.set_footer(text="Simulação — Nenhuma plataforma foi realmente verificada")
+
+        # Envia a notificação no canal onde o comando foi usado
+        await ctx.send(f"{mention_text}", embed=embed)
     # --------------------------------------------------------
     # ROTINA PRINCIPAL
     # --------------------------------------------------------
