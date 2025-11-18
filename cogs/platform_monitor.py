@@ -18,14 +18,13 @@ from platforms.twitch import check_twitch_live
 # ------------------------------------------------------------
 PLATFORM_CHANNEL_ID = int(os.getenv("PLATFORM_STATUS_CHANNEL_ID", 0))
 
-# Nome fixo do criador
-CREATOR = "theadryanbr"   # você pediu assim
+CREATOR = "theadryanbr"
 
-CHECK_INTERVAL = 180  # 3 minutos (seguro e leve)
+CHECK_INTERVAL = 180  # 3 min
 
 
 # ------------------------------------------------------------
-# HORÁRIOS PERMITIDOS
+# JANELAS DE HORÁRIO
 # ------------------------------------------------------------
 LIVE_WINDOWS = [
     (time(12, 0), time(15, 0)),
@@ -34,9 +33,7 @@ LIVE_WINDOWS = [
 
 
 def _now_in_live_window():
-    """Retorna True se o horário atual está dentro de qualquer janela."""
     now = datetime.now().time()
-
     for start, end in LIVE_WINDOWS:
         if start <= now <= end:
             return True
@@ -50,7 +47,7 @@ class PlatformMonitor(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.session = aiohttp.ClientSession()
-        self.fixed_message_id = None
+        self.was_live = False
         self.monitor_task.start()
 
     def cog_unload(self):
@@ -59,48 +56,21 @@ class PlatformMonitor(commands.Cog):
         asyncio.create_task(self.session.close())
 
     # --------------------------------------------------------
-    # Util: obter ou criar mensagem fixa
-    # --------------------------------------------------------
-    async def _get_or_create_fixed_message(self):
-        """Pega uma mensagem fixa existente ou cria uma nova."""
-        channel = self.bot.get_channel(PLATFORM_CHANNEL_ID)
-        if not channel:
-            return None
-
-        # Tentar recuperar mensagem existente
-        if self.fixed_message_id:
-            try:
-                msg = await channel.fetch_message(self.fixed_message_id)
-                return msg
-            except:
-                pass
-
-        # Criar nova mensagem
-        try:
-            msg = await channel.send("🔍 Iniciando monitoramento de plataformas...")
-            self.fixed_message_id = msg.id
-            return msg
-        except:
-            return None
-
-    # --------------------------------------------------------
-    # Rotina principal
+    # ROTINA PRINCIPAL
     # --------------------------------------------------------
     @tasks.loop(seconds=CHECK_INTERVAL)
     async def monitor_task(self):
-        """Faz a verificação periódica."""
         if not PLATFORM_CHANNEL_ID:
             return
 
-        # 1) verificar se estamos dentro dos horários permitidos
         if not _now_in_live_window():
             return
 
-        # 2) checar TikTok primeiro (prioridade)
+        # 1 — TikTok primeiro
         tt_live = await check_tiktok_live(CREATOR, session=self.session)
 
+        # Se não está em live no TikTok, só atualiza o status e para
         if not tt_live:
-            # não está ao vivo → só atualizar status simples
             await self._update_status(
                 tiktok=False,
                 youtube=None,
@@ -108,9 +78,7 @@ class PlatformMonitor(commands.Cog):
             )
             return
 
-        # ----------------------------------------------------
-        # Agora que TikTok está ao vivo → verificar outras
-        # ----------------------------------------------------
+        # 2 — Agora YouTube e Twitch
         yt_live = await check_youtube_live(CREATOR, session=self.session)
         tw_live = await check_twitch_live(CREATOR, session=self.session)
 
@@ -121,55 +89,50 @@ class PlatformMonitor(commands.Cog):
         )
 
     # --------------------------------------------------------
-    # Função de editar mensagem fixa
+    # ATUALIZA STATUS E NOTIFICA
     # --------------------------------------------------------
     async def _update_status(self, tiktok, youtube, twitch):
         channel = self.bot.get_channel(PLATFORM_CHANNEL_ID)
-    if not channel:
-        return
+        if not channel:
+            return
 
-    ROLE_ID = 1254470641944494131
+        ROLE_ID = 1254470641944494131
 
-    def fmt(state):
-        if state is True:
-            return "🟢 Ao vivo"
-        if state is False:
-            return "🔴 Offline"
-        return "⚪ Desconhecido"
+        def fmt(state):
+            if state is True:
+                return "🟢 Ao vivo"
+            if state is False:
+                return "🔴 Offline"
+            return "⚪ Indefinido"
 
-    embed = discord.Embed(
-        title="📡 Status de Transmissão",
-        color=discord.Color.purple(),
-        timestamp=datetime.utcnow()
-    )
+        embed = discord.Embed(
+            title="📡 Status de Transmissão",
+            color=discord.Color.purple(),
+            timestamp=datetime.utcnow()
+        )
 
-    embed.add_field(name="TikTok", value=fmt(tiktok), inline=False)
+        embed.add_field(name="TikTok", value=fmt(tiktok), inline=False)
 
-    if tiktok:  # se TikTok estiver ao vivo → checar outras
-        embed.add_field(name="YouTube", value=fmt(youtube), inline=False)
-        embed.add_field(name="Twitch", value=fmt(twitch), inline=False)
+        if tiktok:
+            embed.add_field(name="YouTube", value=fmt(youtube), inline=False)
+            embed.add_field(name="Twitch", value=fmt(twitch), inline=False)
 
-    embed.set_footer(text="Atualizado automaticamente")
+        embed.set_footer(text="Atualizado automaticamente")
 
-    # Evitar SPAM: só notificar quando mudar de offline→online
-    was_live = getattr(self, "was_live", False)
+        # -------------------------
+        # Avisar somente quando entrar ao vivo
+        # -------------------------
+        if tiktok and not self.was_live:
+            try:
+                await channel.send(
+                    content=f"<@&{ROLE_ID}> 🔴 **O Adryan está AO VIVO!**",
+                    embed=embed
+                )
+            except Exception:
+                pass
 
-    if tiktok and not was_live:
-        # primeira vez que detecta live → notifica
-        try:
-            await channel.send(
-                content=f"<@&{ROLE_ID}> 🔴 **O Adryan está AO VIVO!**",
-                embed=embed
-            )
-        except:
-            pass
+        self.was_live = bool(tiktok)
 
-    # atualizar estado interno
-    self.was_live = bool(tiktok)
-
-    # --------------------------------------------------------
-    # Start na primeira inicialização do bot
-    # --------------------------------------------------------
     @monitor_task.before_loop
     async def before_loop(self):
         await self.bot.wait_until_ready()
