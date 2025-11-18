@@ -1,185 +1,123 @@
 # cogs/platform_monitor.py
-import os
 import asyncio
-from datetime import datetime, time
 import discord
 from discord.ext import commands, tasks
-
+from datetime import datetime, time
 import aiohttp
 
-# Platform scrapers
+# -------- CONFIGS --------
+PLATFORM_CHANNEL_ID = 1415478538114564166     # Canal onde será enviado
+MENTION_ROLE_ID = 1254470641944494131        # Cargo para mencionar
+
+USERNAME_TIKTOK = "theadryanbr"
+USERNAME_YOUTUBE = "TheAdryanBr"
+USERNAME_TWITCH = "theadryanbr"
+
+CHECK_INTERVAL = 60  # segundos
+
+
+# ====== IMPORTS DAS FUNÇÕES DE SCRAPING ======
 from platforms.tiktok import check_tiktok_live
 from platforms.youtube import check_youtube_live
 from platforms.twitch import check_twitch_live
 
 
-# ------------------------------------------------------------
-# CONFIGS
-# ------------------------------------------------------------
-PLATFORM_CHANNEL_ID = int(os.getenv("PLATFORM_STATUS_CHANNEL_ID", 0))
-
-CREATOR = "theadryanbr"
-
-CHECK_INTERVAL = 180  # 3 min
-
-
-# ------------------------------------------------------------
-# JANELAS DE HORÁRIO
-# ------------------------------------------------------------
-LIVE_WINDOWS = [
-    (time(12, 0), time(15, 0)),
-    (time(19, 0), time(23, 0)),
-]
-
-
-def _now_in_live_window():
-    now = datetime.now().time()
-    for start, end in LIVE_WINDOWS:
-        if start <= now <= end:
-            return True
-    return False
-
-
-# ------------------------------------------------------------
-# COG
-# ------------------------------------------------------------
 class PlatformMonitor(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.session = aiohttp.ClientSession()
         self.was_live = False
         self.monitor_task.start()
 
-    def cog_unload(self):
-        if self.monitor_task.is_running():
-            self.monitor_task.cancel()
-        asyncio.create_task(self.session.close())
-
-# ------------------Comando de testes------------------------
-        
-        @commands.command(name="testlive")
-    async def testlive(self, ctx):
-        """
-        Simula uma live no TikTok sem realmente entrar ao vivo.
-        Gera o mesmo embed que o sistema real enviaria.
-        """
-
-        # Cargo a ser mencionado
-        role_id = 1254470641944494131
-        role = ctx.guild.get_role(role_id)
-        mention_text = role.mention if role else "@live"
-
-        # --- Dados simulados do TikTok ---
-        tiktok_title = "TESTE — Live de Simulação"
-        tiktok_game = "Just Chatting (Simulação)"
-        tiktok_url = "https://www.tiktok.com/@TheAdryanBr/live"
-
-        # --- Check falso das outras plataformas ---
-        yt_live = True      # simulação
-        twitch_live = False # simulação
-
-        yt_status = "🔴 Ao vivo" if yt_live else "⚫ Offline"
-        twitch_status = "🔴 Ao vivo" if twitch_live else "⚫ Offline"
-
-        # --- Criação do embed ---
-        embed = discord.Embed(
-            title=f"🔴 Live no TikTok — @TheAdryanBr",
-            description=f"**{tiktok_title}**\n🎮 Jogo: **{tiktok_game}**\n\n👉 **Assista agora:**\n{tiktok_url}",
-            color=discord.Color.red()
-        )
-
-        embed.set_thumbnail(url="https://i.imgur.com/qU9f7uf.png")
-
-        embed.add_field(
-            name="📌 Outras plataformas",
-            value=(
-                f"**YouTube:** {yt_status}\n"
-                f"**Twitch:** {twitch_status}"
-            ),
-            inline=False
-        )
-
-        embed.set_footer(text="Simulação — Nenhuma plataforma foi realmente verificada")
-
-        await ctx.send(f"{mention_text}", embed=embed)
     # --------------------------------------------------------
-    # ROTINA PRINCIPAL
+    # Horário permitido
+    # --------------------------------------------------------
+    def is_allowed_time(self):
+        now = datetime.now().time()
+        start1 = time(12, 0)
+        end1 = time(15, 0)
+
+        start2 = time(20, 0)
+        end2 = time(23, 59)
+
+        return (start1 <= now <= end1) or (start2 <= now <= end2)
+
+    # --------------------------------------------------------
+    # Loop principal de monitoramento
     # --------------------------------------------------------
     @tasks.loop(seconds=CHECK_INTERVAL)
     async def monitor_task(self):
-        if not PLATFORM_CHANNEL_ID:
+        # só monitora no horário
+        if not self.is_allowed_time():
+            self.was_live = False
             return
 
-        if not _now_in_live_window():
+        # verificar tiktok primeiro
+        tiktok = await check_tiktok_live(USERNAME_TIKTOK)
+
+        if not tiktok:
+            # está OFFLINE → resetar status
+            self.was_live = False
             return
 
-        # 1 — TikTok primeiro
-        tt_live = await check_tiktok_live(CREATOR, session=self.session)
-
-        # Se não está em live no TikTok, só atualiza o status e para
-        if not tt_live:
-            await self._update_status(
-                tiktok=False,
-                youtube=None,
-                twitch=None
-            )
+        # se já notificou, não envia novamente
+        if self.was_live:
             return
 
-        # 2 — Agora YouTube e Twitch
-        yt_live = await check_youtube_live(CREATOR, session=self.session)
-        tw_live = await check_twitch_live(CREATOR, session=self.session)
+        # está AO VIVO pela primeira vez no horário
+        youtube = await check_youtube_live(USERNAME_YOUTUBE)
+        twitch = await check_twitch_live(USERNAME_TWITCH)
 
-        await self._update_status(
-            tiktok=True,
-            youtube=bool(yt_live),
-            twitch=bool(tw_live)
-        )
+        await self.send_live_embed(tiktok, youtube, twitch)
+
+        # marcar como “já notificado”
+        self.was_live = True
 
     # --------------------------------------------------------
-    # ATUALIZA STATUS E NOTIFICA
+    # Envio do embed
     # --------------------------------------------------------
-    async def _update_status(self, tiktok, youtube, twitch):
+    async def send_live_embed(self, tiktok, youtube, twitch):
         channel = self.bot.get_channel(PLATFORM_CHANNEL_ID)
         if not channel:
             return
 
-        ROLE_ID = 1254470641944494131
+        role = channel.guild.get_role(MENTION_ROLE_ID)
 
-        def fmt(state):
-            if state is True:
-                return "🟢 Ao vivo"
-            if state is False:
-                return "🔴 Offline"
-            return "⚪ Indefinido"
+        # status extras
+        yt_status = "🔴 AO VIVO" if youtube else "⚫ Offline"
+        tw_status = "🔴 AO VIVO" if twitch else "⚫ Offline"
 
         embed = discord.Embed(
-            title="📡 Status de Transmissão",
-            color=discord.Color.purple(),
-            timestamp=datetime.utcnow()
+            title=f"🔴 {tiktok['title']}",
+            description=f"**Clique para assistir:**\n{tiktok['url']}",
+            color=discord.Color.red()
         )
+        embed.add_field(name="YouTube", value=yt_status, inline=True)
+        embed.add_field(name="Twitch", value=tw_status, inline=True)
+        embed.set_image(url=tiktok["cover"])
 
-        embed.add_field(name="TikTok", value=fmt(tiktok), inline=False)
+        mention = role.mention if role else ""
 
-        if tiktok:
-            embed.add_field(name="YouTube", value=fmt(youtube), inline=False)
-            embed.add_field(name="Twitch", value=fmt(twitch), inline=False)
+        await channel.send(content=mention, embed=embed)
 
-        embed.set_footer(text="Atualizado automaticamente")
+    # --------------------------------------------------------
+    # Teste manual
+    # --------------------------------------------------------
+    @commands.command(name="testlive")
+    async def testlive(self, ctx):
+        youtube = {"live": True}
+        twitch = {"live": True}
+        fake_tiktok = {
+            "title": "🔴 Teste de Live",
+            "url": "https://www.tiktok.com/@theadryanbr/live",
+            "cover": "https://p16-sign-va.tiktokcdn.com/tos-maliva-avt-0068/fake.jpg"
+        }
 
-        # -------------------------
-        # Avisar somente quando entrar ao vivo
-        # -------------------------
-        if tiktok and not self.was_live:
-            try:
-                await channel.send(
-                    content=f"<@&{ROLE_ID}> 🔴 **O Adryan está AO VIVO!**",
-                    embed=embed
-                )
-            except Exception:
-                pass
+        await self.send_live_embed(fake_tiktok, youtube, twitch)
+        await ctx.send("Embed de teste enviado!", delete_after=8)
 
-        self.was_live = bool(tiktok)
-
+    # --------------------------------------------------------
+    # Before Loop
+    # --------------------------------------------------------
     @monitor_task.before_loop
     async def before_loop(self):
         await self.bot.wait_until_ready()
