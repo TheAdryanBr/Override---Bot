@@ -4,10 +4,10 @@ import discord
 from discord.ext import commands
 
 CANAL_FIXO_CONFIG = {
-    1406308661810171965: {"categoria_id": 1213316039350296637, "prefixo_nome": "Call│"},
+    1406308661810171965: {"categoria_id": 1213316039350296637, "prefixo_nome": "🎧|Lobby│"},
     1404889040007725107: {"categoria_id": 1213319157639020564, "prefixo_nome": "♨│Java│"},
     1213319477429801011: {"categoria_id": 1213319157639020564, "prefixo_nome": "🪨|Bedrock|"},
-    1213321053196263464: {"categoria_id": 1213319620287664159, "prefixo_nome": "🎧│Call│"},
+    1213321053196263464: {"categoria_id": 1213319620287664159, "prefixo_nome": "🎧│Lobby│"},
     1213322485479637012: {"categoria_id": 1213322073594793994, "prefixo_nome": "👥│Dupla│"},
     1213322743123148920: {"categoria_id": 1213322073594793994, "prefixo_nome": "👥│Trio│"},
     1213322826564767776: {"categoria_id": 1213322073594793994, "prefixo_nome": "👥│Squad│"},
