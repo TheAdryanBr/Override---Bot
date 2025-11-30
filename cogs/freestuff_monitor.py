@@ -177,33 +177,27 @@ if price_type == "weekend":
 else:
     price_text = "```diff\n+ Gratuito\n```"
 
-embed.add_field(
+        embed.add_field(
     name="PREÇO:",
     value=price_text,
     inline=True
 )
 
-        embed.add_field(
-            name="GÊNEROS:",
-            value=f"```{info['genres']}```",
-            inline=False
-        )
+embed.add_field(
+    name="GÊNEROS:",
+    value=f"```{info['genres']}```",
+    inline=False
+)
 
-        embed.add_field(
-            name="PREÇO:",
-            value="```diff\n+ Gratuito\n```",
-            inline=True
-        )
+embed.add_field(
+    name="DISPONÍVEL ATÉ:",
+    value=f"```{info['end_date']}```",
+    inline=True
+)
 
-        embed.add_field(
-            name="DISPONÍVEL ATÉ:",
-            value=f"```{info['end_date']}```",
-            inline=True
-        )
+embed.set_footer(text=f"Plataforma: {platform}")
 
-        embed.set_footer(text=f"Plataforma: {platform}")
-
-        return embed
+return embed
 
     # ---------------------------------------------------------
     # 5) Comando manual para testes
