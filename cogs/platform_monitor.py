@@ -6,7 +6,7 @@ from datetime import datetime, time
 import aiohttp
 
 # -------- CONFIGS --------
-PLATFORM_CHANNEL_ID = 1415478538114564166     # Canal onde será enviado
+PLATFORM_CHANNEL_ID = 1214687236331667497     # Canal onde será enviado
 MENTION_ROLE_ID = 1254470641944494131        # Cargo para mencionar
 
 USERNAME_TIKTOK = "theadryanbr"
