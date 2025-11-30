@@ -79,7 +79,7 @@ COGS = [
     "cogs.voice_rooms",
     "cogs.background_traffic",
     "cogs.platform_monitor",
-    "cogs.freestuff_monitor.py",
+    "cogs.freestuff_monitor",
 ]
 
 # ===== EVENTO DE SYNC =====
