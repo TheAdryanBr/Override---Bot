@@ -169,35 +169,35 @@ class FreeStuffMonitor(commands.Cog):
         if original_embed.image:
             embed.set_image(url=original_embed.image.url)
 
-        # Definir preço dependendo do tipo
-price_type = self.detect_price_type(original_embed)
+                # Definir preço dependendo do tipo
+        price_type = self.detect_price_type(original_embed)
 
-if price_type == "weekend":
-    price_text = "```diff\n+ Gratuito (Fim de semana)\n```"
-else:
-    price_text = "```diff\n+ Gratuito\n```"
+        if price_type == "weekend":
+            price_text = "```diff\n+ Gratuito (Fim de semana)\n```"
+        else:
+            price_text = "```diff\n+ Gratuito\n```"
 
         embed.add_field(
-    name="PREÇO:",
-    value=price_text,
-    inline=True
-)
+            name="PREÇO:",
+            value=price_text,
+            inline=True
+        )
 
-embed.add_field(
-    name="GÊNEROS:",
-    value=f"```{info['genres']}```",
-    inline=False
-)
+        embed.add_field(
+            name="GÊNEROS:",
+            value=f"```{info['genres']}```",
+            inline=False
+        )
 
-embed.add_field(
-    name="DISPONÍVEL ATÉ:",
-    value=f"```{info['end_date']}```",
-    inline=True
-)
+        embed.add_field(
+            name="DISPONÍVEL ATÉ:",
+            value=f"```{info['end_date']}```",
+            inline=True
+        )
 
-embed.set_footer(text=f"Plataforma: {platform}")
+        embed.set_footer(text=f"Plataforma: {platform}")
 
-return embed
+        return embed
 
     # ---------------------------------------------------------
     # 5) Comando manual para testes
