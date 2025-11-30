@@ -33,7 +33,7 @@ def _build_welcome_embed(member: discord.Member) -> discord.Embed:
         pass
     embed.add_field(
         name="📢│𝙁𝙞𝙦𝙪𝙚 𝙖𝙩𝙚𝙣𝙩𝙤!",
-        value="Leias as regras no canal: <#1213332268618096690>\nDuvidas e sugestões no canal: <#1259311950958170205>\nAgora vai lá aproveitar 😁",
+        value="Leias as regras no canal: <#1213332268618096690>\nDuvidas e sugestões no canal: <#1259311950958170205>\n Sou grato por entrar 😁",
         inline=False
     )
     return embed
