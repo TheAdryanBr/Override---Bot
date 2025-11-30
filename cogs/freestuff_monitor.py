@@ -169,11 +169,19 @@ class FreeStuffMonitor(commands.Cog):
         if original_embed.image:
             embed.set_image(url=original_embed.image.url)
 
-        embed.add_field(
-            name="DESCRIÇÃO:",
-            value=f"```{info['desc']}```",
-            inline=False
-        )
+        # Definir preço dependendo do tipo
+price_type = self.detect_price_type(original_embed)
+
+if price_type == "weekend":
+    price_text = "```diff\n+ Gratuito (Fim de semana)\n```"
+else:
+    price_text = "```diff\n+ Gratuito\n```"
+
+embed.add_field(
+    name="PREÇO:",
+    value=price_text,
+    inline=True
+)
 
         embed.add_field(
             name="GÊNEROS:",
