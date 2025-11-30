@@ -204,23 +204,29 @@ class FreeStuffMonitor(commands.Cog):
     # ---------------------------------------------------------
     @commands.command(name="testfree")
     async def testfree(self, ctx):
+        """Testa a aparência do embed final sem depender do FreeStuff."""
+
         fake_embed = discord.Embed(
             title="Exemplo — ARC Raiders",
             url="https://store.steampowered.com/app/1808500/ARC_Raiders/",
             color=655610,
             description="Jogo grátis disponível!"
         )
-        fake_embed.set_image(url="https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1808500/04baafaf64a5aa5f46ecda5d71889a4848dc0628/header.jpg")
+
+        fake_embed.set_image(
+            url="https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1808500/04baafaf64a5aa5f46ecda5d71889a4848dc0628/header.jpg"
+        )
 
         info = {
-            "desc": "Exemplo de descrição…",
-            "genres": "Action, Shooter",
+            "desc": "ARC Raiders é uma aventura multijogador...",
+            "genres": "Action, Shooter, Extraction",
             "end_date": "Não informado"
         }
 
-        embed = self.build_final_embed("Steam", fake_embed, info)
-        await ctx.send(embed=embed)
+        final = self.build_final_embed("Steam", fake_embed, info)
+        await ctx.send(embed=final)
 
 
+# NÃO COLOCAR DENTRO DA CLASSE!
 async def setup(bot):
     await bot.add_cog(FreeStuffMonitor(bot))
