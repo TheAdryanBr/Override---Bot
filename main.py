@@ -80,6 +80,7 @@ COGS = [
     "cogs.background_traffic",
     "cogs.platform_monitor",
     "cogs.freestuff_monitor",
+    "cogs.controle_owner",
 ]
 
 # ===== EVENTO DE SYNC =====
