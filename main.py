@@ -69,7 +69,7 @@ os.environ["RUNNING_INSTANCE"] = "1"
 
 # ===== BOT INIT =====
 intents = discord.Intents.all()
-bot = commands.Bot(command_prefix="!", intents=intents)
+bot = commands.Bot(command_prefix="!")
 
 # ===== LISTA DE COGS =====
 COGS = [
@@ -152,7 +152,7 @@ if __name__ == "__main__":
     # 2. Função principal do bot (roda no event loop principal)
     async def bot_main():
         await load_cogs_startup()
-        await bot.start(TOKEN, intents=intents, reconnect=True)
+        await bot.start(TOKEN)
 
     # 3. Inicia o Flask em thread separada (ele faz o ping e mantém o Render acordado)
     def start_flask():
