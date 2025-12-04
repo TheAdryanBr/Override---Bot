@@ -68,8 +68,16 @@ if os.environ.get("RUNNING_INSTANCE") == "1":
 os.environ["RUNNING_INSTANCE"] = "1"
 
 # ===== BOT INIT =====
-intents = discord.Intents.all()
-bot = commands.Bot(command_prefix="!")
+intents = discord.Intents.default()
+intents.message_content = True      # obrigatório pra ler mensagens (inclusive DM)
+intents.messages = True
+intents.dm_messages = True          # ← ESSA LINHA É A CHAVE PRA DM FUNCIONAR NO RENDER
+intents.guilds = True
+intents.guild_messages = True
+intents.members = True              # se você usa em algum cog (welcome, etc)
+intents.presences = True            # só se precisar (pode tirar se quiser)
+
+bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ===== LISTA DE COGS =====
 COGS = [
