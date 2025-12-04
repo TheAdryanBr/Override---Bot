@@ -6,7 +6,7 @@ class ControleOwner(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         # ⚠️ COLOQUE SEU ID AQUI (clique direito em você no Discord > Copiar ID)
-        self.owner_id = 757885606623248464  # ← MUDE AQUI!!!
+        self.owner_id = 473962013031399425  # ← MUDE AQUI!!!
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
