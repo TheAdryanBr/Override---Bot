@@ -146,36 +146,79 @@ class FreeStuffMonitor(commands.Cog):
         return "free"
 
     def build_final_embed(self, platform, original_embed, info):
-        embed = discord.Embed(
-            title=original_embed.title,
-            url=original_embed.url,
-            color=original_embed.color or discord.Color.blue()
-        )
+    embed = discord.Embed(
+        title=original_embed.title,
+        url=original_embed.url,
+        color=original_embed.color or discord.Color.blue()
+    )
 
-        logos = {
-            "Steam": "https://upload.wikimedia.org/wikipedia/commons/c/c1/Steam_Logo.png",
-            "Epic Games": "https://upload.wikimedia.org/wikipedia/commons/3/31/Epic_Games_logo.png",
-            "GOG": "https://upload.wikimedia.org/wikipedia/commons/6/6c/GOG.com_logo.png"
-        }
+    # Thumbnail da plataforma
+    logos = {
+        "Steam": "https://upload.wikimedia.org/wikipedia/commons/c/c1/Steam_Logo.png",
+        "Epic Games": "https://upload.wikimedia.org/wikipedia/commons/3/31/Epic_Games_logo.png",
+        "GOG": "https://upload.wikimedia.org/wikipedia/commons/6/6c/GOG.com_logo.png"
+    }
+    embed.set_thumbnail(url=logos.get(platform))
 
-        embed.set_thumbnail(url=logos.get(platform))
+    # IMAGEM PRINCIPAL (capa do jogo)
+    if original_embed.image:
+        embed.set_image(url=original_embed.image.url)
 
-        if original_embed.image:
-            embed.set_image(url=original_embed.image.url)
+    # -----------------------------------------
+    # DESCRIÇÃO
+    # -----------------------------------------
+    embed.add_field(
+        name="DESCRIÇÃO:",
+        value=f"```{info['desc']}```",
+        inline=False
+    )
 
-        price_type = self.detect_price_type(original_embed)
+    # -----------------------------------------
+    # GÊNEROS (em lista com bullet points)
+    # -----------------------------------------
+    genres_raw = info["genres"]
 
-        if price_type == "weekend":
-            price_text = "```diff\n+ Gratuito (Fim de semana)\n```"
-        else:
-            price_text = "```diff\n+ Gratuito\n```"
+    # transforma "Action, Shooter, RPG" → lista
+    genre_list = "• " + "\n• ".join(
+        [g.strip() for g in genres_raw.replace(",", "\n").split("\n") if g.strip()]
+    )
 
-        embed.add_field(name="PREÇO:", value=price_text, inline=True)
-        embed.add_field(name="GÊNEROS:", value=f"```{info['genres']}```", inline=False)
-        embed.add_field(name="DISPONÍVEL ATÉ:", value=f"```{info['end_date']}```", inline=True)
-        embed.set_footer(text=f"Plataforma: {platform}")
+    embed.add_field(
+        name="GÊNERO:",
+        value=f"```{genre_list}```",
+        inline=False
+    )
 
-        return embed
+    # -----------------------------------------
+    # PREÇO
+    # -----------------------------------------
+    price_type = self.detect_price_type(original_embed)
+
+    if price_type == "weekend":
+        price_text = "```diff\n+ Gratuito (Fim de semana)\n```"
+    elif price_type == "test":
+        price_text = "```diff\n+ Gratuito (Test gratuito)\n```"
+    else:
+        price_text = "```diff\n+ Gratuito\n```"
+
+    embed.add_field(
+        name="PREÇO:",
+        value=price_text,
+        inline=False
+    )
+
+    # -----------------------------------------
+    # DATA FINAL
+    # -----------------------------------------
+    end_date = info["end_date"] if info["end_date"] else "Não informado"
+
+    embed.add_field(
+        name="",
+        value=f"```{end_date}```",
+        inline=False
+    )
+
+    return embed
 
     # ---------------------------------------------------------
     # 5) Comando manual para testes
