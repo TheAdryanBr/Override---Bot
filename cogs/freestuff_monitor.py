@@ -219,3 +219,6 @@ class FreeStuffMonitor(commands.Cog):
         final = self.build_final_embed("Steam", fake_embed, info)
 
         await ctx.send(embed=final)
+        # NÃO COLOCAR DENTRO DA CLASSE!
+async def setup(bot):
+    await bot.add_cog(FreeStuffMonitor(bot))
