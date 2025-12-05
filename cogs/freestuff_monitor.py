@@ -26,7 +26,7 @@ class FreeStuffMonitor(commands.Cog):
     # ---------------------------------------------------------
     # 1) Listener: ler mensagens do FreeStuff
     # ---------------------------------------------------------
-     @commands.Cog.listener()
+    @commands.Cog.listener()
     async def on_message(self, msg: discord.Message):
         if msg.guild is None:
             return
@@ -63,7 +63,6 @@ class FreeStuffMonitor(commands.Cog):
             )
 
         await self.bot.process_commands(msg)
-
     # ---------------------------------------------------------
     # 2) Detectar plataforma e link
     # ---------------------------------------------------------
