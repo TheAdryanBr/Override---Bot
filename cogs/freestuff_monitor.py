@@ -70,8 +70,9 @@ async def on_message(self, msg: discord.Message):
             embed=final_embed
         )
 
-    # ESSENCIAL -> permitir que o comando !testfree funcione
+    # ESSENCIAL -> permitir comandos como !testfree
     await self.bot.process_commands(msg)
+
     # ---------------------------------------------------------
     # 2) Detectar plataforma e link
     # ---------------------------------------------------------
