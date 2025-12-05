@@ -146,33 +146,10 @@ bot.MAIN_CONFIG = {
 
 print(f"[MAIN] Instance ID: {bot.MAIN_CONFIG['INSTANCE_ID']}")
 
-# ===== RUN – VERSÃO 100% FUNCIONAL COM FLASK + DMs =====
+# ===== RUN (Render: Flask foreground, bot thread) =====
 if __name__ == "__main__":
-    # 1. Primeiro carrega todos os cogs (síncrono, antes de tudo)
-    async def load_cogs_startup():
-        for cog in COGS:
-            try:
-                await bot.load_extension(cog)
-                print(f"[COG] Carregado: {cog}")
-            except Exception as e:
-                print(f"[COG ERRO] {cog}: {e}")
-                traceback.print_exc()
+    _start_bot_thread()
 
-    # 2. Função principal do bot (roda no event loop principal)
-    async def bot_main():
-        await load_cogs_startup()
-        await bot.start(TOKEN)
-
-    # 3. Inicia o Flask em thread separada (ele faz o ping e mantém o Render acordado)
-    def start_flask():
-        from keep_alive import app, serve_foreground
-        port = int(os.environ.get("PORT", 8080))
-        print(f"[FLASK] Iniciando servidor na porta {port} para keep-alive")
-        serve_foreground(app, port=port)
-
-    import threading
-    threading.Thread(target=start_flask, daemon=True).start()
-
-    # 4. Agora roda o bot no loop principal → DMs voltam a funcionar 100%
-    print("[BOT] Iniciando bot no event loop principal...")
-    asyncio.run(bot_main())
+    from keep_alive import app, serve_foreground
+    port = int(os.environ.get("PORT", 8080))
+    serve_foreground(app, port=port)
