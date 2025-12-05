@@ -5,3 +5,4 @@ PyNaCl
 aiohttp
 Pillow
 beautifulsoup4
+bs4
