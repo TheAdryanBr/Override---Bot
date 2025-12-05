@@ -138,20 +138,19 @@ class FreeStuffMonitor(commands.Cog):
     # ---------------------------------------------------------
     # 4) Montar o embed final
     # ---------------------------------------------------------
-    def detect_price_type(self, original_embed):
-        """Simples detecção de 'Free Weekend'."""
-        text = (original_embed.description or "") + " " + (original_embed.title or "")
-        if "weekend" in text.lower() or "fim de semana" in text.lower():
-            return "weekend"
-        return "free"
+def detect_price_type(self, original_embed):
+    """Simples detecção de 'Free Weekend'."""
+    text = (original_embed.description or "") + " " + (original_embed.title or "")
+    if "weekend" in text.lower() or "fim de semana" in text.lower():
+        return "weekend"
+    return "free"
 
-    def build_final_embed(self, platform, original_embed, info):
+def build_final_embed(self, platform, original_embed, info):
     embed = discord.Embed(
         title=original_embed.title,
         url=original_embed.url,
         color=original_embed.color or discord.Color.blue()
     )
-
     # Thumbnail da plataforma
     logos = {
         "Steam": "https://upload.wikimedia.org/wikipedia/commons/c/c1/Steam_Logo.png",
