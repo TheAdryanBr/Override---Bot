@@ -28,6 +28,7 @@ class FreeStuffMonitor(commands.Cog):
     # ---------------------------------------------------------
     @commands.Cog.listener()
     async def on_message(self, msg: discord.Message):
+
         if msg.guild is None:
             return
         if msg.author.bot is False:
@@ -36,12 +37,10 @@ class FreeStuffMonitor(commands.Cog):
             return
         if msg.channel.id != TEST_CHANNEL_ID:
             return
-
         if not msg.embeds:
             return
 
         embed = msg.embeds[0]
-
         platform, url = self.extract_platform_and_url(embed)
 
         if platform is None or url is None:
@@ -62,7 +61,9 @@ class FreeStuffMonitor(commands.Cog):
                 embed=final_embed
             )
 
+        # permite comandos (!testfree)
         await self.bot.process_commands(msg)
+
     # ---------------------------------------------------------
     # 2) Detectar plataforma e link
     # ---------------------------------------------------------
@@ -96,7 +97,6 @@ class FreeStuffMonitor(commands.Cog):
 
         soup = BeautifulSoup(html, "html.parser")
 
-        # -------- Steam --------
         if platform == "Steam":
             desc = soup.find("div", {"id": "game_area_description"})
             genres = soup.select_one(".details_block")
@@ -111,38 +111,40 @@ class FreeStuffMonitor(commands.Cog):
             except:
                 genres_text = "Indisponível"
 
-            # Steam não fornece data final de forma oficial para jogos grátis normais
-            end_date = "Não informado"
+            return {"desc": desc_text, "genres": genres_text, "end_date": "Não informado"}
 
-            return {"desc": desc_text, "genres": genres_text, "end_date": end_date}
-
-        # -------- Epic Games --------
         if platform == "Epic Games":
-            # Epic tem estrutura grande, aqui pegamos info simplificada
             desc = soup.find("meta", {"name": "description"})
             desc_text = desc["content"] if desc else "Indisponível"
 
-            genres = "Indisponível"  # Difícil sem API oficial
+            return {
+                "desc": desc_text[:900],
+                "genres": "Indisponível",
+                "end_date": "Não informado"
+            }
 
-            # Data final
-            end_date = "Não informado"
-
-            return {"desc": desc_text[:900], "genres": genres, "end_date": end_date}
-
-        # -------- GOG --------
         if platform == "GOG":
             desc = soup.find("meta", {"name": "description"})
             desc_text = desc["content"] if desc else "Indisponível"
-            genres = "Indisponível"
-            end_date = "Não informado"
 
-            return {"desc": desc_text[:900], "genres": genres, "end_date": end_date}
+            return {
+                "desc": desc_text[:900],
+                "genres": "Indisponível",
+                "end_date": "Não informado"
+            }
 
         return {"desc": "Indisponível", "genres": "Indisponível", "end_date": "Indisponível"}
 
     # ---------------------------------------------------------
     # 4) Montar o embed final
     # ---------------------------------------------------------
+    def detect_price_type(self, original_embed):
+        """Simples detecção de 'Free Weekend'."""
+        text = (original_embed.description or "") + " " + (original_embed.title or "")
+        if "weekend" in text.lower() or "fim de semana" in text.lower():
+            return "weekend"
+        return "free"
+
     def build_final_embed(self, platform, original_embed, info):
         embed = discord.Embed(
             title=original_embed.title,
@@ -150,7 +152,6 @@ class FreeStuffMonitor(commands.Cog):
             color=original_embed.color or discord.Color.blue()
         )
 
-        # Thumbnail = logo da loja
         logos = {
             "Steam": "https://upload.wikimedia.org/wikipedia/commons/c/c1/Steam_Logo.png",
             "Epic Games": "https://upload.wikimedia.org/wikipedia/commons/3/31/Epic_Games_logo.png",
@@ -162,7 +163,6 @@ class FreeStuffMonitor(commands.Cog):
         if original_embed.image:
             embed.set_image(url=original_embed.image.url)
 
-                # Definir preço dependendo do tipo
         price_type = self.detect_price_type(original_embed)
 
         if price_type == "weekend":
@@ -170,24 +170,9 @@ class FreeStuffMonitor(commands.Cog):
         else:
             price_text = "```diff\n+ Gratuito\n```"
 
-        embed.add_field(
-            name="PREÇO:",
-            value=price_text,
-            inline=True
-        )
-
-        embed.add_field(
-            name="GÊNEROS:",
-            value=f"```{info['genres']}```",
-            inline=False
-        )
-
-        embed.add_field(
-            name="DISPONÍVEL ATÉ:",
-            value=f"```{info['end_date']}```",
-            inline=True
-        )
-
+        embed.add_field(name="PREÇO:", value=price_text, inline=True)
+        embed.add_field(name="GÊNEROS:", value=f"```{info['genres']}```", inline=False)
+        embed.add_field(name="DISPONÍVEL ATÉ:", value=f"```{info['end_date']}```", inline=True)
         embed.set_footer(text=f"Plataforma: {platform}")
 
         return embed
@@ -217,8 +202,11 @@ class FreeStuffMonitor(commands.Cog):
         }
 
         final = self.build_final_embed("Steam", fake_embed, info)
-
         await ctx.send(embed=final)
-        # NÃO COLOCAR DENTRO DA CLASSE!
+
+
+# ---------------------------------------------------------
+# FUNÇÃO SETUP OBRIGATÓRIA
+# ---------------------------------------------------------
 async def setup(bot):
     await bot.add_cog(FreeStuffMonitor(bot))
