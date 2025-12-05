@@ -26,52 +26,43 @@ class FreeStuffMonitor(commands.Cog):
     # ---------------------------------------------------------
     # 1) Listener: ler mensagens do FreeStuff
     # ---------------------------------------------------------
-    @commands.Cog.listener()
-async def on_message(self, msg: discord.Message):
-    # Ignorar bots que não sejam o FreeStuff
-    if msg.guild is None:
-        return
-    if msg.author.bot is False:
-        return
-    if msg.guild.id != TEST_GUILD_ID:
-        return
-    if msg.channel.id != TEST_CHANNEL_ID:
-        return
+     @commands.Cog.listener()
+    async def on_message(self, msg: discord.Message):
+        if msg.guild is None:
+            return
+        if msg.author.bot is False:
+            return
+        if msg.guild.id != TEST_GUILD_ID:
+            return
+        if msg.channel.id != TEST_CHANNEL_ID:
+            return
 
-    # Não processar se não houver embed
-    if not msg.embeds:
-        return
+        if not msg.embeds:
+            return
 
-    embed = msg.embeds[0]
+        embed = msg.embeds[0]
 
-    # Detectar plataforma e link
-    platform, url = self.extract_platform_and_url(embed)
+        platform, url = self.extract_platform_and_url(embed)
 
-    if platform is None or url is None:
-        return
+        if platform is None or url is None:
+            return
 
-    # Evitar duplicata
-    key = f"{platform}:{url}"
-    if key in sent_cache:
-        return
-    sent_cache.add(key)
+        key = f"{platform}:{url}"
+        if key in sent_cache:
+            return
+        sent_cache.add(key)
 
-    # Buscar informações extras
-    info = await self.fetch_game_info(platform, url)
+        info = await self.fetch_game_info(platform, url)
+        final_embed = self.build_final_embed(platform, embed, info)
 
-    # Criar embed final
-    final_embed = self.build_final_embed(platform, embed, info)
+        channel = self.bot.get_channel(MAIN_CHANNEL_ID)
+        if channel:
+            await channel.send(
+                content=f"Novo jogo gratuito disponível! <@&{PING_ROLE_ID}>",
+                embed=final_embed
+            )
 
-    # Enviar no canal principal
-    channel = self.bot.get_channel(MAIN_CHANNEL_ID)
-    if channel:
-        await channel.send(
-            content=f"Novo jogo gratuito disponível! <@&{PING_ROLE_ID}>",
-            embed=final_embed
-        )
-
-    # ESSENCIAL -> permitir comandos como !testfree
-    await self.bot.process_commands(msg)
+        await self.bot.process_commands(msg)
 
     # ---------------------------------------------------------
     # 2) Detectar plataforma e link
@@ -206,9 +197,8 @@ async def on_message(self, msg: discord.Message):
     # 5) Comando manual para testes
     # ---------------------------------------------------------
     @commands.command(name="testfree")
-async def test_free(self, ctx):
-    await ctx.send("Comando funcionando!")
-        """Testa a aparência do embed final sem depender do FreeStuff."""
+    async def test_free(self, ctx):
+        await ctx.send("Comando funcionando!")
 
         fake_embed = discord.Embed(
             title="Exemplo — ARC Raiders",
@@ -229,7 +219,6 @@ async def test_free(self, ctx):
 
         final = self.build_final_embed("Steam", fake_embed, info)
         await ctx.send(embed=final)
-
 
 # NÃO COLOCAR DENTRO DA CLASSE!
 async def setup(bot):
