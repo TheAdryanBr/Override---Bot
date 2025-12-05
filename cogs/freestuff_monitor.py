@@ -206,7 +206,8 @@ async def on_message(self, msg: discord.Message):
     # 5) Comando manual para testes
     # ---------------------------------------------------------
     @commands.command(name="testfree")
-    async def testfree(self, ctx):
+async def test_free(self, ctx):
+    await ctx.send("Comando funcionando!")
         """Testa a aparência do embed final sem depender do FreeStuff."""
 
         fake_embed = discord.Embed(
