@@ -4,14 +4,14 @@ from discord.ext import commands
 import asyncio
 import random
 import time
-import openai
+from openai import OpenAI
 
 # ======================
 # CONFIGURAÇÕES DO BOT
 # ======================
 
 OPENAI_API_KEY = "SUA_KEY_AQUI"
-openai.api_key = OPENAI_API_KEY
+client_ai = OpenAI(api_key=OPENAI_API_KEY)
 
 CHANNEL_MAIN = 1261154588766244905
 
@@ -22,14 +22,11 @@ SPECIAL_USERS = {
     1436068859991036096: "JM",  # JM_021
 }
 
-# Delay para juntar mensagens separadas
 BUFFER_DELAY_RANGE = (5, 15)
 
-# Tempo parado para encerrar conversa
 END_CONVO_MIN = 15 * 60
 END_CONVO_MAX = 20 * 60
 
-# Cooldown para começar outra conversa
 COOLDOWN_MIN = 45 * 60
 COOLDOWN_MAX = 2 * 60 * 60
 
@@ -44,19 +41,22 @@ class AIChatCog(commands.Cog):
         self.cooldown_until = 0
 
     # ======================
-    # Função auxiliar GPT
+    # Função auxiliar GPT (API nova)
     # ======================
 
     async def ask_gpt(self, prompt):
-        """Envia a mensagem para o GPT e retorna a resposta textual."""
         try:
-            response = openai.ChatCompletion.create(
-                model="gpt-4.1",
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=250,
+            response = client_ai.responses.create(
+                model="gpt-4o-mini",  # modelo mais leve e rápido
+                messages=[
+                    {"role": "user", "content": prompt}
+                ],
+                max_output_tokens=250,
                 temperature=0.9
             )
-            return response["choices"][0]["message"]["content"]
+
+            return response.output_text
+
         except Exception as e:
             return f"Erro ao falar com meus processadores… deixa quieto ({e})."
 
@@ -71,20 +71,16 @@ class AIChatCog(commands.Cog):
 
         msg_time = time.time()
 
-        # ——————————————
-        # Se marcado → responde sempre
-        # ——————————————
+        # Marcado → responde sempre
         if self.bot.user in message.mentions:
             asyncio.create_task(self.respond_to_message(message, force_reply=True))
             return
 
-        # ——————————————
-        # Somente canal principal inicia conversas
-        # ——————————————
+        # Só inicia conversa no canal principal
         if message.channel.id != CHANNEL_MAIN:
             return
 
-        # Dono ou ADM não iniciam conversa
+        # ADM ou dono não iniciam conversa
         if message.author.id in ADM_IDS:
             return
 
@@ -92,17 +88,13 @@ class AIChatCog(commands.Cog):
         if msg_time < self.cooldown_until:
             return
 
-        # Atualiza última mensagem de conversa
         self.last_message_time = msg_time
 
-        # Ativa conversa se ainda não ativa
         if not self.active:
             self.active = True
 
-        # Adiciona ao buffer
         self.buffer.append(message)
 
-        # Inicia delay humano para analisar mensagens
         if self.buffer_task is None:
             self.buffer_task = asyncio.create_task(self.buffer_timeout())
 
@@ -125,20 +117,17 @@ class AIChatCog(commands.Cog):
         if not self.buffer:
             return
 
-        # Verifica encerramento por inatividade
+        # Encerrar conversa por inatividade
         now = time.time()
         if self.last_message_time and (now - self.last_message_time > random.randint(END_CONVO_MIN, END_CONVO_MAX)):
             await self.end_conversation()
             return
 
-        # Monta prompt
         prompt = self.build_prompt(self.buffer)
         self.buffer.clear()
 
-        # Responde no canal
         response = await self.ask_gpt(prompt)
 
-        # Pequeno delay humano antes de enviar
         await asyncio.sleep(random.randint(5, 10))
 
         channel = self.bot.get_channel(CHANNEL_MAIN)
@@ -150,11 +139,8 @@ class AIChatCog(commands.Cog):
     # ======================
 
     def build_prompt(self, messages):
-        """Cria o prompt contendo estilo A/B/C, regras, humor e lógica do JM."""
-
         texto_chat = "\n".join([f"{m.author.display_name}: {m.content}" for m in messages])
 
-        # Detecta se o JM está envolvido
         jm_involved = any(msg.author.id == 1436068859991036096 for msg in messages)
 
         prompt = f"""
@@ -182,22 +168,19 @@ REGRAS IMPORTANTES:
 - O humor deve ser leve e divertido.
 - Se alguém pedir algo que pareça uma “tarefa”, você pode recusar de forma criativa ou preguiçosa.
 
-SOBRE O USUÁRIO ESPECÍFICO “JM”:
-- ID: 1436068859991036096
-- Ele é tímido, vive enrolado com mulheres.
-- Você sempre fica **na dúvida** (apenas na dúvida) se ele gosta de homens.
-- NUNCA afirme explicitamente.
-- Use isso como humor indireto.
-- Suas respostas para ele podem ser um mix mais forte de análise técnica + zoeira leve.
-- Pode chamá-lo diretamente pelo nome se a resposta for só para ele.
+SOBRE O USUÁRIO “JM” (1436068859991036096):
+- Tímido e vive enrolado com mulheres.
+- Você sempre fica **na dúvida** se ele gosta de homens (somente dúvida, nunca afirme).
+- Use humor indireto quando ele estiver envolvido.
+- Pode chamá-lo pelo nome se a resposta for só para ele.
+- Misture mais humor técnico quando for para ele.
 
-AGORA, ESTE É O CHAT:
+AQUI ESTÁ O CHAT:
 
 {texto_chat}
 
-Analise toda a conversa e responda usando o estilo que fizer mais sentido no momento.
-Se o JM estiver envolvido, use uma pitada extra de humor técnico.
-Sua resposta deve ser NATURAL, leve e fluida.
+Responda de forma natural, leve e fluida.
+Se o JM estiver envolvido, adicione uma pitada extra de humor técnico.
         """
 
         return prompt.strip()
@@ -210,9 +193,7 @@ Sua resposta deve ser NATURAL, leve e fluida.
         prompt = self.build_prompt([message])
         response = await self.ask_gpt(prompt)
 
-        # Delay humano
         await asyncio.sleep(random.randint(3, 8))
-
         await message.channel.send(response)
 
     # ======================
