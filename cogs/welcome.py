@@ -23,8 +23,8 @@ def _find_welcome_channel(guild: discord.Guild) -> discord.TextChannel:
     return None
 
 def _build_welcome_embed(member: discord.Member) -> discord.Embed:
-    title = f"``` {member.display_name} | 𝘽𝙚𝙢-𝙫𝙞𝙣𝙙𝙤(𝙖)! 👋```"
-    description = f"```Seja bem vindo (a) {member.display_name}, agradeço por ter entrado no servidor, espero que goste dele, jogue e converse muito.```"
+    title = f"``` {member.display_name} | 𝘽𝙚𝙢-𝙫𝙞𝙣𝙙𝙤(𝙖)! ao Spawnpoint```"
+    description = f"```Seja bem-vindo(a) {member.display_name}, agradeço a entrada, espero que possa se torar um membro regular do lobby.```"
     embed = discord.Embed(title=title, description=description, color=discord.Color(_WELCOME_COLOR))
     try:
         avatar_url = member.display_avatar.url
@@ -33,7 +33,7 @@ def _build_welcome_embed(member: discord.Member) -> discord.Embed:
         pass
     embed.add_field(
         name="📢│𝙁𝙞𝙦𝙪𝙚 𝙖𝙩𝙚𝙣𝙩𝙤!",
-        value="Leias as regras no canal: <#1213332268618096690>\nDuvidas e sugestões no canal: <#1259311950958170205>\n Sou grato por entrar 😁",
+        value="Leias as <#1213332268618096690>\nDuvidas e sugestões no canal: <#1259311950958170205>\n Sou grato por entrar 😁",
         inline=False
     )
     return embed
