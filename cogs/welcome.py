@@ -33,7 +33,7 @@ def _build_welcome_embed(member: discord.Member) -> discord.Embed:
         pass
     embed.add_field(
         name="📢│𝙁𝙞𝙦𝙪𝙚 𝙖𝙩𝙚𝙣𝙩𝙤!",
-        value="Leias as <#1213332268618096690>\nDuvidas e sugestões no canal: <#1259311950958170205>\n Sou grato por entrar 😁",
+        value="Leias as <#1213332268618096690>\nDuvidas e sugestões no canal: <#1259311950958170205>",
         inline=False
     )
     return embed
@@ -104,7 +104,7 @@ class WelcomeCog(commands.Cog):
             if not guild:
                 return
             channel = _find_welcome_channel(guild)
-            content = f"({member.mention} saiu do servidor) Triste, mas vá com Deus meu mano."
+            content = f"{member.mention} Iniciou uma partida e saiu do lobby. (Saiu do servidor)"
             if channel:
                 try:
                     await channel.send(content, allowed_mentions=discord.AllowedMentions(users=True))
