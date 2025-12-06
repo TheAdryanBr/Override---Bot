@@ -147,7 +147,7 @@ class AIChatCog(commands.Cog):
     # ----------------------
     # Helper: chamada AI (roda em thread)
     # ----------------------
-    async def _call_openai(self, model: str, prompt: str, max_output_tokens: int = 300, temperature: float = 0.85) -> str:
+    async def _call_openai(self, model: str, prompt: str, max_output_tokens: int = 300, temperature: float = 0.4) -> str:
         """Chama a API OpenAI em thread para não bloquear o loop."""
         try:
             def sync_call():
