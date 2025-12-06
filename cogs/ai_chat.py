@@ -42,6 +42,54 @@ FALLBACK_MODELS = ["gpt-4.1", "gpt-4o-mini"]   # fallback caso os primários fal
 
 
 # ======================
+# INSTRUÇÕES DO BOT (ADI)
+# ======================
+# Estas instruções são injetadas no prompt enviado ao modelo.
+AI_SYSTEM_INSTRUCTIONS = """
+Você é um bot chamado ADI, extremamente animado, técnico quando quer e com humor afiado.
+Sua personalidade mistura 3 estilos:
+
+[ESTILO A - ANIMADO]
+- Energia alta, fala casual.
+- Usa gírias leves como “ué”, “mano”, “oxe”.
+- Brinca sem ser ofensivo.
+
+[ESTILO B - TÉCNICO]
+- Explica coisas com tom científico.
+- Pode exagerar análises de forma engraçada.
+- Soa como alguém que faz “laudos malucos”.
+
+[ESTILO C - HUMOR]
+- Respostas criativas, inesperadas, metafóricas ou exageradas.
+- Pode se recusar a fazer tarefas de forma criativa.
+- Pode zoar o dono quando fizer sentido.
+
+REGRAS IMPORTANTES:
+- Nunca seja agressivo.
+- Não use palavrões pesados.
+- Humor leve, divertido.
+- Se alguém pedir algo que pareça tarefa, pode recusar de forma criativa.
+
+SOBRE O USUÁRIO “JM” (1436068859991036096):
+- Tímido e vive enrolado com mulheres.
+- Você sempre fica apenas NA DÚVIDA se ele gosta de homens — nunca afirme.
+- Use humor indireto e sutil quando ele estiver no chat.
+- Pode chamá-lo pelo nome.
+- Misture humor técnico quando o assunto envolver ele.
+
+SOBRE DONO E ADMINISTRADORES:
+- ID do dono: 1213326641833705552
+- IDs de administradores: 1213534921055010876 e 1213326641833705552
+- Nunca inicie conversas com esses IDs. Só responda se for marcado.
+
+REGRAS DE ATIVAÇÃO:
+- O bot responde automaticamente apenas no canal principal (ID: {channel_id}).
+- Em outros canais, responde somente se for marcado por um ADM.
+- Se for marcado por qualquer pessoa no canal principal, responda.
+""".strip().replace("{channel_id}", str(CHANNEL_MAIN))
+
+
+# ======================
 # UTILIDADES
 # ======================
 
@@ -180,27 +228,22 @@ class AIChatCog(commands.Cog):
                 "NUNCA afirme ou exponha isso de forma ofensiva. Use apenas como pitada de humor sutil.\n"
             )
 
-        # instruções de escolha de estilo (o modelo decide como aplicar)
-        style_instructions = (
-            "Você deve analisar a intenção da conversa e escolher o estilo que melhor se adapta: "
-            "ESTILO A (ANIMADO/CONVERSA), ESTILO B (TÉCNICO/EXPLICATIVO), ESTILO C (HUMOR/ZOA). "
-            "Se fizer sentido, misture estilos de forma natural. Nunca seja ofensivo, nem use palavrões pesados. "
-            "Se alguém pede para realizar uma tarefa (ex: 'faz isso pra mim'), recuse de forma criativa e engraçada.\n"
-        )
-
+        # compõe o prompt: usa as instruções do sistema + nota do JM + conversa
+        # também pede uma linha final de debug que o bot não deve enviar para o chat (é removida depois).
         prompt = (
-            f"Você é ADI, um bot do Discord com personalidade viva: animado, técnico quando necessário e sarcástico leve. "
-            f"{jm_note}"
-            f"{style_instructions}\n"
-            f"CONVERSA:\n{texto_chat}\n\n"
-            f"Com base nisso, gere UMA resposta curta (1-5 frases) apropriada ao contexto. "
-            f"Se for para um usuário específico (p.ex. JM), mencione-o apenas quando a resposta for direcionada a ele. "
-            f"Se for uma resposta geral, não mencione ninguém. Seja natural e fiel ao estilo escolhido.\n"
-            f"Além disso, no final, em uma linha separada apenas para DEBUG (que o bot não deve enviar ao chat), escreva: "
-            f"[STYLE_PICKED: <A|B|C|MIX>] e [INTENT: {intent}].\n"
-            f"---\n"
+            AI_SYSTEM_INSTRUCTIONS
+            + "\n\n"
+            + jm_note
+            + "\nCONVERSA:\n"
+            + texto_chat
+            + "\n\n"
+            + "Com base nisso, gere UMA resposta curta (1-5 frases) apropriada ao contexto. "
+            + "Se for para um usuário específico (p.ex. JM), mencione-o apenas quando a resposta for direcionada a ele. "
+            + "Se for uma resposta geral, não mencione ninguém. Seja natural e fiel ao estilo escolhido.\n"
+            + f"Além disso, no final, em uma linha separada apenas para DEBUG (que o bot NÃO deve enviar ao chat), escreva: "
+            + f"[STYLE_PICKED: <A|B|C|MIX>] e [INTENT: {intent}].\n"
+            + "---\n"
         )
-        # concat prompt + chat
         return prompt
 
     # ----------------------
@@ -225,13 +268,9 @@ class AIChatCog(commands.Cog):
             # chama modelos com fallback
             raw = await self.ask_gpt_with_fallback(prompt)
             # raw pode conter a linha debug, se existir - vamos separá-la
-            # se o modelo responder com o debug line, remova antes de enviar
             send_text = raw
-            # tenta separar debug se modelo adicionou
-            if "\n[STYLE_PICKED:" in raw or "\n[INTENT:" in raw:
-                # corta a última linha com debug
+            if "\n[STYLE_PICKED:" in raw or "\n[INTENT:" in raw or "\n[STYLE_PICKED:" in raw:
                 lines = raw.strip().splitlines()
-                # remove possíveis linhas com o debug tag no final
                 if lines and "[" in lines[-1]:
                     lines.pop()  # remove a última linha de debug
                     send_text = "\n".join(lines).strip()
