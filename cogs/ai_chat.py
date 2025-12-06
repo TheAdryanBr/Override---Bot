@@ -1,213 +1,392 @@
 # cogs/ai_chat.py
+import os
+import time
+import random
+import asyncio
+from typing import List
+
 import discord
 from discord.ext import commands
-import asyncio
-import random
-import time
 from openai import OpenAI
 
 # ======================
 # CONFIGURAÇÕES DO BOT
 # ======================
 
-OPENAI_API_KEY = "SUA_KEY_AQUI"
+# Recomendo usar variável de ambiente. Se quiser testar localmente, coloque a chave aqui.
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "SUA_KEY_AQUI")
 client_ai = OpenAI(api_key=OPENAI_API_KEY)
 
+# Canal principal
 CHANNEL_MAIN = 1261154588766244905
 
+# IDs
 OWNER_ID = 1213326641833705552
 ADM_IDS = {1213534921055010876, OWNER_ID}
 
+# Usuários especiais
 SPECIAL_USERS = {
     1436068859991036096: "JM",  # JM_021
 }
 
-BUFFER_DELAY_RANGE = (5, 15)
+# Buffer / delays / timeouts
+BUFFER_DELAY_RANGE = (5, 15)            # tempo para juntar mensagens fragmentadas (segundos)
+END_CONVO_MIN = 15 * 60                 # 15 minutos
+END_CONVO_MAX = 20 * 60                 # 20 minutos
+COOLDOWN_MIN = 45 * 60                  # 45 minutos
+COOLDOWN_MAX = 2 * 60 * 60              # 2 horas
 
-END_CONVO_MIN = 15 * 60
-END_CONVO_MAX = 20 * 60
+# Modelos (ordem: preferencia principal -> fallback)
+PRIMARY_MODELS = ["gpt-5.1", "gpt-5.1-mini"]   # tente na ordem até funcionar
+FALLBACK_MODELS = ["gpt-4.1", "gpt-4o-mini"]   # fallback caso os primários falhem
 
-COOLDOWN_MIN = 45 * 60
-COOLDOWN_MAX = 2 * 60 * 60
 
+# ======================
+# UTILIDADES
+# ======================
+
+def is_admin_member(member: discord.Member) -> bool:
+    try:
+        return member.guild_permissions.administrator or (member.id in ADM_IDS)
+    except Exception:
+        return member.id in ADM_IDS
+
+
+def choose_model_order() -> List[str]:
+    """Retorna lista de modelos para tentar em ordem."""
+    return PRIMARY_MODELS + FALLBACK_MODELS
+
+
+def now_ts() -> float:
+    return time.time()
+
+
+# ======================
+# COG PRINCIPAL
+# ======================
 
 class AIChatCog(commands.Cog):
-    def __init__(self, bot):
+    """Cog de chat com IA: buffer, delays, personalidade, fallback de modelos e /ai status"""
+
+    def __init__(self, bot: commands.Bot):
         self.bot = bot
+        self.buffer: List[discord.Message] = []
+        self.buffer_task: asyncio.Task | None = None
+        self.last_message_time: float | None = None
+        self.cooldown_until: float = 0.0
         self.active = False
-        self.buffer = []
-        self.buffer_task = None
-        self.last_message_time = None
-        self.cooldown_until = 0
+        self.last_response_text: str | None = None
+        self.current_model_in_use: str | None = None
+        self.recent_error: str | None = None
 
-    # ======================
-    # Função auxiliar GPT (API nova)
-    # ======================
-
-    async def ask_gpt(self, prompt):
+    # ----------------------
+    # Helper: chamada AI (roda em thread)
+    # ----------------------
+    async def _call_openai(self, model: str, prompt: str, max_output_tokens: int = 300, temperature: float = 0.85) -> str:
+        """Chama a API OpenAI em thread para não bloquear o loop."""
         try:
-            response = client_ai.responses.create(
-                model="gpt-4o-mini",  # modelo mais leve e rápido
-                messages=[
-                    {"role": "user", "content": prompt}
-                ],
-                max_output_tokens=250,
-                temperature=0.9
+            def sync_call():
+                return client_ai.responses.create(
+                    model=model,
+                    input=prompt,
+                    max_output_tokens=max_output_tokens,
+                    temperature=temperature
+                )
+            resp = await asyncio.to_thread(sync_call)
+            return resp.output_text
+        except Exception as e:
+            raise e
+
+    async def ask_gpt_with_fallback(self, prompt: str) -> str:
+        """Tenta modelos na ordem definida, atualiza current_model_in_use e trata exceções."""
+        models = choose_model_order()
+        last_exc = None
+        for m in models:
+            try:
+                self.current_model_in_use = m
+                text = await self._call_openai(m, prompt)
+                self.recent_error = None
+                return text
+            except Exception as e:
+                last_exc = e
+                # registre o erro e tente o próximo modelo
+                self.recent_error = f"Model {m} failed: {e}"
+                await asyncio.sleep(0.5)  # pequeno delay antes do próximo
+        # se chegou aqui, todos falharam
+        raise RuntimeError(f"All models failed. Last error: {last_exc}")
+
+    # ----------------------
+    # Detecção de intenção (heurística leve)
+    # ----------------------
+    def detect_intent(self, texts: List[str]) -> str:
+        """
+        Retorna uma intenção simples: 'technical', 'casual', 'funny', 'sensitive'
+        Usamos heurística leve para evitar chamadas extras.
+        """
+        joined = " ".join(texts).lower()
+
+        # presença de palavras técnicas/perguntas
+        tech_keywords = ["como", "config", "erro", "instal", "setup", "otimiz", "qual", "por que", "porque", "cpu", "gpu", "memória", "ram", "latência"]
+        casual_keywords = ["oi", "fala", "tudo bem", "vlw", "valeu", "entra", "quer jogar", "jogar", "partida", "ron"]
+        funny_markers = ["kk", "kkk", "hahaha", "lol", ":p", "zoe", "zoar", "zoeira"]
+        sensitive_markers = ["amor", "namor", "ficar", "gostar", "gay", "homem", "mulher", "sentimentos"]
+
+        score = {"technical": 0, "casual": 0, "funny": 0, "sensitive": 0}
+
+        for k in tech_keywords:
+            if k in joined:
+                score["technical"] += 2
+        for k in casual_keywords:
+            if k in joined:
+                score["casual"] += 1
+        for k in funny_markers:
+            if k in joined:
+                score["funny"] += 2
+        for k in sensitive_markers:
+            if k in joined:
+                score["sensitive"] += 1
+
+        # perguntas -> técnico ganha peso
+        if "?" in joined or "como " in joined or "qual " in joined:
+            score["technical"] += 1
+
+        # se mention JM aparece no texto -> leve bias para humor técnico
+        if any(str(uid) in joined for uid in SPECIAL_USERS.keys()) or any(name.lower() in joined for name in SPECIAL_USERS.values()):
+            score["funny"] += 1
+            score["technical"] += 1
+
+        # escolha maior
+        chosen = max(score.items(), key=lambda x: x[1])[0]
+        # se todos zeros, default casual
+        if score[chosen] == 0:
+            return "casual"
+        return chosen
+
+    # ----------------------
+    # Montagem do prompt com instrução de estilo
+    # ----------------------
+    def build_prompt(self, messages: List[discord.Message]) -> str:
+        texto_chat = "\n".join([f"{m.author.display_name}: {m.content}" for m in messages])
+        texts = [m.content for m in messages]
+        intent = self.detect_intent(texts)
+
+        # detecta se JM está presente
+        jm_present = any(m.author.id in SPECIAL_USERS for m in messages)
+        jm_note = ""
+        if jm_present:
+            jm_note = (
+                "OBS: O usuário JM (1436068859991036096) está presente. "
+                "Você tem uma leve dúvida interna se ele pode gostar de homens — isso é UM INSIGHT PARA HUMOR INDIRECTO, "
+                "NUNCA afirme ou exponha isso de forma ofensiva. Use apenas como pitada de humor sutil.\n"
             )
 
-            return response.output_text
+        # instruções de escolha de estilo (o modelo decide como aplicar)
+        style_instructions = (
+            "Você deve analisar a intenção da conversa e escolher o estilo que melhor se adapta: "
+            "ESTILO A (ANIMADO/CONVERSA), ESTILO B (TÉCNICO/EXPLICATIVO), ESTILO C (HUMOR/ZOA). "
+            "Se fizer sentido, misture estilos de forma natural. Nunca seja ofensivo, nem use palavrões pesados. "
+            "Se alguém pede para realizar uma tarefa (ex: 'faz isso pra mim'), recuse de forma criativa e engraçada.\n"
+        )
 
-        except Exception as e:
-            return f"Erro ao falar com meus processadores… deixa quieto ({e})."
+        prompt = (
+            f"Você é ADI, um bot do Discord com personalidade viva: animado, técnico quando necessário e sarcástico leve. "
+            f"{jm_note}"
+            f"{style_instructions}\n"
+            f"CONVERSA:\n{texto_chat}\n\n"
+            f"Com base nisso, gere UMA resposta curta (1-5 frases) apropriada ao contexto. "
+            f"Se for para um usuário específico (p.ex. JM), mencione-o apenas quando a resposta for direcionada a ele. "
+            f"Se for uma resposta geral, não mencione ninguém. Seja natural e fiel ao estilo escolhido.\n"
+            f"Além disso, no final, em uma linha separada apenas para DEBUG (que o bot não deve enviar ao chat), escreva: "
+            f"[STYLE_PICKED: <A|B|C|MIX>] e [INTENT: {intent}].\n"
+            f"---\n"
+        )
+        # concat prompt + chat
+        return prompt
 
-    # ======================
-    # Coleta de mensagens
-    # ======================
-
-    @commands.Cog.listener()
-    async def on_message(self, message: discord.Message):
-        if message.author.bot:
-            return
-
-        msg_time = time.time()
-
-        # Marcado → responde sempre
-        if self.bot.user in message.mentions:
-            asyncio.create_task(self.respond_to_message(message, force_reply=True))
-            return
-
-        # Só inicia conversa no canal principal
-        if message.channel.id != CHANNEL_MAIN:
-            return
-
-        # ADM ou dono não iniciam conversa
-        if message.author.id in ADM_IDS:
-            return
-
-        # Está em cooldown?
-        if msg_time < self.cooldown_until:
-            return
-
-        self.last_message_time = msg_time
-
-        if not self.active:
-            self.active = True
-
-        self.buffer.append(message)
-
-        if self.buffer_task is None:
-            self.buffer_task = asyncio.create_task(self.buffer_timeout())
-
-    # ======================
-    # Timeout do buffer
-    # ======================
-
-    async def buffer_timeout(self):
-        delay = random.randint(*BUFFER_DELAY_RANGE)
-        await asyncio.sleep(delay)
-
-        await self.process_buffer()
-        self.buffer_task = None
-
-    # ======================
-    # Processamento do buffer
-    # ======================
-
+    # ----------------------
+    # Mecanismo de envio da resposta (process_buffer)
+    # ----------------------
     async def process_buffer(self):
         if not self.buffer:
             return
 
         # Encerrar conversa por inatividade
-        now = time.time()
+        now = now_ts()
         if self.last_message_time and (now - self.last_message_time > random.randint(END_CONVO_MIN, END_CONVO_MAX)):
             await self.end_conversation()
             return
 
-        prompt = self.build_prompt(self.buffer)
+        messages_to_process = list(self.buffer)
         self.buffer.clear()
 
-        response = await self.ask_gpt(prompt)
+        prompt = self.build_prompt(messages_to_process)
 
-        await asyncio.sleep(random.randint(5, 10))
+        try:
+            # chama modelos com fallback
+            raw = await self.ask_gpt_with_fallback(prompt)
+            # raw pode conter a linha debug, se existir - vamos separá-la
+            # se o modelo responder com o debug line, remova antes de enviar
+            send_text = raw
+            # tenta separar debug se modelo adicionou
+            if "\n[STYLE_PICKED:" in raw or "\n[INTENT:" in raw:
+                # corta a última linha com debug
+                lines = raw.strip().splitlines()
+                # remove possíveis linhas com o debug tag no final
+                if lines and "[" in lines[-1]:
+                    lines.pop()  # remove a última linha de debug
+                    send_text = "\n".join(lines).strip()
 
-        channel = self.bot.get_channel(CHANNEL_MAIN)
-        if channel:
-            await channel.send(response)
+            self.last_response_text = send_text
 
-    # ======================
-    # Construção da personalidade
-    # ======================
+            # decide se menciona alguém: se última mensagem for de um usuário especial e havia apenas poucas pessoas
+            last_author = messages_to_process[-1].author
+            single_target = False
+            if last_author.id in SPECIAL_USERS:
+                # menciona só se a conversa estiver mais dirigida a ele
+                single_target = True
 
-    def build_prompt(self, messages):
-        texto_chat = "\n".join([f"{m.author.display_name}: {m.content}" for m in messages])
+            # Delay humano antes de enviar
+            await asyncio.sleep(random.randint(5, 10))
 
-        jm_involved = any(msg.author.id == 1436068859991036096 for msg in messages)
+            channel = self.bot.get_channel(CHANNEL_MAIN)
+            if channel:
+                if single_target:
+                    # menciona o usuário leve e responsável (não exagera)
+                    await channel.send(f"<@{last_author.id}> {send_text}")
+                else:
+                    await channel.send(send_text)
 
-        prompt = f"""
-Você é um bot chamado ADI, extremamente animado, técnico quando quer e com humor afiado.
-Sua personalidade mistura 3 estilos:
+        except Exception as e:
+            # registra erro e informa no canal de teste
+            self.recent_error = str(e)
+            channel = self.bot.get_channel(CHANNEL_MAIN)
+            if channel:
+                await channel.send(f"Erro ao falar com meus processadores… deixa quieto ({e})")
 
-[ESTILO A - ANIMADO]
-- Energia alta, fala casual.
-- Usa gírias leves como “ué”, “mano”, “oxe”.
-- Brinca sem ser ofensivo.
+    # ----------------------
+    # Buffer timeout / on_message
+    # ----------------------
+    async def buffer_timeout(self):
+        delay = random.randint(*BUFFER_DELAY_RANGE)
+        await asyncio.sleep(delay)
+        self.buffer_task = None
+        await self.process_buffer()
 
-[ESTILO B - TÉCNICO]
-- Explica coisas com tom científico.
-- Pode exagerar análises de forma engraçada.
-- Soa como alguém que faz “laudos malucos”.
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message):
+        # ignore bots
+        if message.author.bot:
+            return
 
-[ESTILO C - HUMOR]
-- Respostas criativas, inesperadas, metafóricas ou exageradas.
-- Pode se recusar a fazer tarefas de forma engraçada.
-- Pode zoar o dono quando fizer sentido.
+        now = now_ts()
 
-REGRAS IMPORTANTES:
-- Nunca seja agressivo.
-- Não fale palavrões pesados.
-- O humor deve ser leve e divertido.
-- Se alguém pedir algo que pareça uma “tarefa”, você pode recusar de forma criativa ou preguiçosa.
+        # se marcado -> responder sempre (mesmo fora do canal)
+        if self.bot.user in message.mentions:
+            # se marcado por ADM em outro canal, ou marcado por qualquer pessoa no canal principal
+            if message.channel.id != CHANNEL_MAIN:
+                # só responde se quem marcou for ADM
+                if not is_admin_member(message.author):
+                    return
+            # processar menção (task separada para não bloquear)
+            asyncio.create_task(self.respond_to_message(message))
+            return
 
-SOBRE O USUÁRIO “JM” (1436068859991036096):
-- Tímido e vive enrolado com mulheres.
-- Você sempre fica **na dúvida** se ele gosta de homens (somente dúvida, nunca afirme).
-- Use humor indireto quando ele estiver envolvido.
-- Pode chamá-lo pelo nome se a resposta for só para ele.
-- Misture mais humor técnico quando for para ele.
+        # só inicia conversas automaticamente no canal principal
+        if message.channel.id != CHANNEL_MAIN:
+            return
 
-AQUI ESTÁ O CHAT:
+        # dono/adm não iniciam conversa
+        if message.author.id in ADM_IDS:
+            return
 
-{texto_chat}
+        # se em cooldown, ignora
+        if now < self.cooldown_until:
+            return
 
-Responda de forma natural, leve e fluida.
-Se o JM estiver envolvido, adicione uma pitada extra de humor técnico.
-        """
+        # registra última atividade
+        self.last_message_time = now
+        if not self.active:
+            self.active = True
 
-        return prompt.strip()
+        # adiciona ao buffer
+        self.buffer.append(message)
 
-    # ======================
-    # Resposta quando marcado
-    # ======================
+        # inicia timeout se ainda não houver
+        if not self.buffer_task:
+            self.buffer_task = asyncio.create_task(self.buffer_timeout())
 
-    async def respond_to_message(self, message, force_reply=False):
+    # ----------------------
+    # Responder à menção direto
+    # ----------------------
+    async def respond_to_message(self, message: discord.Message):
         prompt = self.build_prompt([message])
-        response = await self.ask_gpt(prompt)
+        try:
+            raw = await self.ask_gpt_with_fallback(prompt)
+            send_text = raw
+            if "\n[" in raw:
+                lines = raw.strip().splitlines()
+                if lines and "[" in lines[-1]:
+                    lines.pop()
+                    send_text = "\n".join(lines).strip()
+            await asyncio.sleep(random.randint(3, 8))
+            # responde no mesmo canal, preferindo reply
+            try:
+                await message.reply(send_text, mention_author=False)
+            except Exception:
+                await message.channel.send(send_text)
+            self.last_response_text = send_text
+        except Exception as e:
+            self.recent_error = str(e)
+            try:
+                await message.channel.send(f"Erro ao falar com meus processadores… deixa quieto ({e})")
+            except Exception:
+                pass
 
-        await asyncio.sleep(random.randint(3, 8))
-        await message.channel.send(response)
-
-    # ======================
-    # Encerrar conversa
-    # ======================
-
+    # ----------------------
+    # End conversation + cooldown randomizado (45min - 2h)
+    # ----------------------
     async def end_conversation(self):
         self.active = False
         self.buffer.clear()
+        if self.buffer_task:
+            try:
+                self.buffer_task.cancel()
+            except Exception:
+                pass
         self.buffer_task = None
-
         cooldown = random.randint(COOLDOWN_MIN, COOLDOWN_MAX)
-        self.cooldown_until = time.time() + cooldown
+        self.cooldown_until = now_ts() + cooldown
+
+    # ----------------------
+    # Slash command: /ai status (apenas ADM/DONO pode usar)
+    # ----------------------
+    @commands.hybrid_command(name="ai_status", with_app_command=True, description="Mostrar status do AI (ADM apenas).")
+    @commands.check(lambda ctx: is_admin_member(ctx.author))
+    async def ai_status(self, ctx: commands.Context):
+        now = now_ts()
+        in_cooldown = now < self.cooldown_until
+        remaining = max(0, int(self.cooldown_until - now)) if in_cooldown else 0
+        emb = discord.Embed(title="AI Chat Status", color=discord.Color.blurple())
+        emb.add_field(name="Ativo", value=str(self.active))
+        emb.add_field(name="No buffer", value=str(len(self.buffer)))
+        emb.add_field(name="Em cooldown", value=str(in_cooldown))
+        emb.add_field(name="Cooldown restante (s)", value=str(remaining))
+        emb.add_field(name="Modelo atual", value=str(self.current_model_in_use))
+        emb.add_field(name="Última resposta (resumo)", value=(self.last_response_text[:400] + "...") if self.last_response_text else "—")
+        emb.add_field(name="Erro recente", value=(self.recent_error or "Nenhum"))
+        await ctx.reply(embed=emb, ephemeral=True)
+
+    # ----------------------
+    # Cog teardown
+    # ----------------------
+    async def cog_unload(self):
+        # cancela tarefas pendentes
+        if self.buffer_task:
+            try:
+                self.buffer_task.cancel()
+            except Exception:
+                pass
 
 
-async def setup(bot):
+async def setup(bot: commands.Bot):
     await bot.add_cog(AIChatCog(bot))
