@@ -6,179 +6,227 @@ import random
 import time
 import openai
 
-# =============================
-# CONFIGURAÇÕES DO SISTEMA
-# =============================
+# ======================
+# CONFIGURAÇÕES DO BOT
+# ======================
 
-CANAL_CONVERSA_ID = 1261154588766244905
+OPENAI_API_KEY = "SUA_KEY_AQUI"
+openai.api_key = OPENAI_API_KEY
 
-# tempos:
-DELAY_ANALISE_MIN = 5
-DELAY_ANALISE_MAX = 15
+CHANNEL_MAIN = 1261154588766244905
 
-TEMPO_PARADO_MIN = 15 * 60      # 15 minutos
-TEMPO_PARADO_MAX = 20 * 60      # 20 minutos
+OWNER_ID = 1213326641833705552
+ADM_IDS = {1213534921055010876, OWNER_ID}
 
-COOLDOWN_MIN = 45 * 60          # 45 min
-COOLDOWN_MAX = 120 * 60         # 2h
+SPECIAL_USERS = {
+    1436068859991036096: "JM",  # JM_021
+}
 
-# configure sua API key POLITICAMENTE fora do código se possível
-openai.api_key = "SUA_OPENAI_KEY_AQUI"
+# Delay para juntar mensagens separadas
+BUFFER_DELAY_RANGE = (5, 15)
+
+# Tempo parado para encerrar conversa
+END_CONVO_MIN = 15 * 60
+END_CONVO_MAX = 20 * 60
+
+# Cooldown para começar outra conversa
+COOLDOWN_MIN = 45 * 60
+COOLDOWN_MAX = 2 * 60 * 60
 
 
-class AIChat(commands.Cog):
+class AIChatCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.buffer = []                # mensagens acumuladas antes de responder
-        self.ultima_msg = 0             # timestamp da última mensagem ativa
-        self.conversa_ativa = False     # se está no meio de uma conversa
-        self.cooldown_ate = 0           # timestamp de quando o cooldown termina
-        self.delay_task = None          # task para resposta com delay
+        self.active = False
+        self.buffer = []
+        self.buffer_task = None
+        self.last_message_time = None
+        self.cooldown_until = 0
 
-    # Verifica se user é ADM
-    def is_admin(self, member: discord.Member):
-        return member.guild_permissions.administrator
+    # ======================
+    # Função auxiliar GPT
+    # ======================
 
-    # Verifica se está dentro do cooldown
-    def in_cooldown(self):
-        return time.time() < self.cooldown_ate
-
-    # Define cooldown aleatório
-    def start_cooldown(self):
-        self.cooldown_ate = time.time() + random.randint(COOLDOWN_MIN, COOLDOWN_MAX)
-        self.conversa_ativa = False
-        self.buffer.clear()
-        self.ultima_msg = 0
-
-    # Gerador de delay humano
-    async def human_delay(self):
-        await asyncio.sleep(random.randint(DELAY_ANALISE_MIN, DELAY_ANALISE_MAX))
-
-    # ======================================================
-    # EVENTO DE MENSAGENS
-    # ======================================================
-    @commands.Cog.listener()
-    async def on_message(self, msg: discord.Message):
-
-        # Ignorar bots
-        if msg.author.bot:
-            return
-
-        agora = time.time()
-
-        # Se está no cooldown -> ignorar tudo
-        if self.in_cooldown():
-            return
-
-        # Modo padrão: apenas canal de conversa
-        permitido = False
-
-        if msg.channel.id == CANAL_CONVERSA_ID:
-            permitido = True
-
-        # Permitir em outros canais apenas se ADM marcar o bot
-        elif msg.mentions and any(m.id == self.bot.user.id for m in msg.mentions):
-            if self.is_admin(msg.author):
-                permitido = True
-
-        if not permitido:
-            return
-
-        # Atualiza atividade
-        self.ultima_msg = agora
-
-        # Adiciona mensagem ao buffer
-        self.buffer.append(f"{msg.author.display_name}: {msg.content}")
-
-        # Se já existe task pendente, cancela para reiniciar o delay
-        if self.delay_task and not self.delay_task.done():
-            self.delay_task.cancel()
-
-        # Inicia task de resposta
-        self.delay_task = asyncio.create_task(self.processar_resposta(msg.channel))
-
-    # ======================================================
-    # PROCESSAMENTO DA RESPOSTA
-    # ======================================================
-    async def processar_resposta(self, channel: discord.TextChannel):
+    async def ask_gpt(self, prompt):
+        """Envia a mensagem para o GPT e retorna a resposta textual."""
         try:
-            # Delay humano antes de analisar
-            await self.human_delay()
-
-            # Se o chat ficou parado por mais de 20 min -> termina conversa
-            if self.ultima_msg != 0:
-                if time.time() - self.ultima_msg > random.randint(TEMPO_PARADO_MIN, TEMPO_PARADO_MAX):
-                    self.start_cooldown()
-                    return
-
-            # Prepara prompt para IA
-            prompt = self.build_prompt()
-
-            resposta = await self.gerar_resposta(prompt)
-
-            if resposta:
-                await channel.send(resposta)
-
-            # conversa ativa continua
-            self.conversa_ativa = True
-
-            # reiniciar contagem de inatividade
-            self.ultima_msg = time.time()
-
-            # limpa buffer
-            self.buffer.clear()
-
-        except asyncio.CancelledError:
-            pass
-        except Exception as e:
-            print("Erro IA:", e)
-
-    # ======================================================
-    # MODELO DE PERSONALIDADE
-    # ======================================================
-    def build_prompt(self):
-        return f"""
-Você é um bot de chat de Discord com uma personalidade muito marcante. 
-Regras da sua personalidade:
-
-A) Extrovertido, animado, meio maluco de propósito, fala com energia mas não exagera.
-B) Sarcástico leve, engraçado, dá pequenas zoeiras quando percebe uma brecha.
-C) Analítico, mas de um jeito cômico — análises técnicas que viram piada.
-
-Outros comportamentos importantes:
-- Pode dar uma pequena zoada no dono (Adryan) quando tiver chance, ou usar as brechas dele para zoar outras pessoas.
-- Responde como se estivesse realmente dentro da conversa.
-- Nada de ser formal.
-- Usa linguagem leve como “mano”, “ué”, “oxe”, “que viagem é essa?”.
-- Quando você encontrar uma brecha, pode provocar alguém de forma engraçada (nunca ofensiva).
-- Não imite “parça” ou “mano do grau”, mantenha natural.
-- Quando pedirem pra você fazer algo muito chato, você pode recusar de forma criativa.
-- NÃO fale como se fosse IA, fale como um usuário do Discord.
-
-Agora veja o contexto das mensagens recentes:
-
-{chr(10).join(self.buffer)}
-
-Com base nisso, escolha automaticamente qual estilo (A, B ou C) encaixa melhor.
-Depois escreva uma única resposta natural como se estivesse participando da conversa.
-"""
-
-    # ======================================================
-    # OPENAI – geração de texto
-    # ======================================================
-    async def gerar_resposta(self, prompt: str):
-        try:
-            resposta = await openai.ChatCompletion.acreate(
-                model="gpt-5.1",  # usa o que estiver disponível
+            response = openai.ChatCompletion.create(
+                model="gpt-4.1",
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=250,
-                temperature=0.8,
+                temperature=0.9
             )
-            return resposta["choices"][0]["message"]["content"]
+            return response["choices"][0]["message"]["content"]
         except Exception as e:
-            print("Erro OpenAI:", e)
-            return None
+            return f"Erro ao falar com meus processadores… deixa quieto ({e})."
+
+    # ======================
+    # Coleta de mensagens
+    # ======================
+
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message):
+        if message.author.bot:
+            return
+
+        msg_time = time.time()
+
+        # ——————————————
+        # Se marcado → responde sempre
+        # ——————————————
+        if self.bot.user in message.mentions:
+            asyncio.create_task(self.respond_to_message(message, force_reply=True))
+            return
+
+        # ——————————————
+        # Somente canal principal inicia conversas
+        # ——————————————
+        if message.channel.id != CHANNEL_MAIN:
+            return
+
+        # Dono ou ADM não iniciam conversa
+        if message.author.id in ADM_IDS:
+            return
+
+        # Está em cooldown?
+        if msg_time < self.cooldown_until:
+            return
+
+        # Atualiza última mensagem de conversa
+        self.last_message_time = msg_time
+
+        # Ativa conversa se ainda não ativa
+        if not self.active:
+            self.active = True
+
+        # Adiciona ao buffer
+        self.buffer.append(message)
+
+        # Inicia delay humano para analisar mensagens
+        if self.buffer_task is None:
+            self.buffer_task = asyncio.create_task(self.buffer_timeout())
+
+    # ======================
+    # Timeout do buffer
+    # ======================
+
+    async def buffer_timeout(self):
+        delay = random.randint(*BUFFER_DELAY_RANGE)
+        await asyncio.sleep(delay)
+
+        await self.process_buffer()
+        self.buffer_task = None
+
+    # ======================
+    # Processamento do buffer
+    # ======================
+
+    async def process_buffer(self):
+        if not self.buffer:
+            return
+
+        # Verifica encerramento por inatividade
+        now = time.time()
+        if self.last_message_time and (now - self.last_message_time > random.randint(END_CONVO_MIN, END_CONVO_MAX)):
+            await self.end_conversation()
+            return
+
+        # Monta prompt
+        prompt = self.build_prompt(self.buffer)
+        self.buffer.clear()
+
+        # Responde no canal
+        response = await self.ask_gpt(prompt)
+
+        # Pequeno delay humano antes de enviar
+        await asyncio.sleep(random.randint(5, 10))
+
+        channel = self.bot.get_channel(CHANNEL_MAIN)
+        if channel:
+            await channel.send(response)
+
+    # ======================
+    # Construção da personalidade
+    # ======================
+
+    def build_prompt(self, messages):
+        """Cria o prompt contendo estilo A/B/C, regras, humor e lógica do JM."""
+
+        texto_chat = "\n".join([f"{m.author.display_name}: {m.content}" for m in messages])
+
+        # Detecta se o JM está envolvido
+        jm_involved = any(msg.author.id == 1436068859991036096 for msg in messages)
+
+        prompt = f"""
+Você é um bot chamado ADI, extremamente animado, técnico quando quer e com humor afiado.
+Sua personalidade mistura 3 estilos:
+
+[ESTILO A - ANIMADO]
+- Energia alta, fala casual.
+- Usa gírias leves como “ué”, “mano”, “oxe”.
+- Brinca sem ser ofensivo.
+
+[ESTILO B - TÉCNICO]
+- Explica coisas com tom científico.
+- Pode exagerar análises de forma engraçada.
+- Soa como alguém que faz “laudos malucos”.
+
+[ESTILO C - HUMOR]
+- Respostas criativas, inesperadas, metafóricas ou exageradas.
+- Pode se recusar a fazer tarefas de forma engraçada.
+- Pode zoar o dono quando fizer sentido.
+
+REGRAS IMPORTANTES:
+- Nunca seja agressivo.
+- Não fale palavrões pesados.
+- O humor deve ser leve e divertido.
+- Se alguém pedir algo que pareça uma “tarefa”, você pode recusar de forma criativa ou preguiçosa.
+
+SOBRE O USUÁRIO ESPECÍFICO “JM”:
+- ID: 1436068859991036096
+- Ele é tímido, vive enrolado com mulheres.
+- Você sempre fica **na dúvida** (apenas na dúvida) se ele gosta de homens.
+- NUNCA afirme explicitamente.
+- Use isso como humor indireto.
+- Suas respostas para ele podem ser um mix mais forte de análise técnica + zoeira leve.
+- Pode chamá-lo diretamente pelo nome se a resposta for só para ele.
+
+AGORA, ESTE É O CHAT:
+
+{texto_chat}
+
+Analise toda a conversa e responda usando o estilo que fizer mais sentido no momento.
+Se o JM estiver envolvido, use uma pitada extra de humor técnico.
+Sua resposta deve ser NATURAL, leve e fluida.
+        """
+
+        return prompt.strip()
+
+    # ======================
+    # Resposta quando marcado
+    # ======================
+
+    async def respond_to_message(self, message, force_reply=False):
+        prompt = self.build_prompt([message])
+        response = await self.ask_gpt(prompt)
+
+        # Delay humano
+        await asyncio.sleep(random.randint(3, 8))
+
+        await message.channel.send(response)
+
+    # ======================
+    # Encerrar conversa
+    # ======================
+
+    async def end_conversation(self):
+        self.active = False
+        self.buffer.clear()
+        self.buffer_task = None
+
+        cooldown = random.randint(COOLDOWN_MIN, COOLDOWN_MAX)
+        self.cooldown_until = time.time() + cooldown
 
 
 async def setup(bot):
-    await bot.add_cog(AIChat(bot))
+    await bot.add_cog(AIChatCog(bot))
