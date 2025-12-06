@@ -6,4 +6,4 @@ aiohttp
 Pillow
 beautifulsoup4
 bs4
-openai>=1.0.0
+openai>=1.12.0
