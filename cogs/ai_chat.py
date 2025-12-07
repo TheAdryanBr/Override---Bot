@@ -93,14 +93,12 @@ INSTRUCOES FINAIS:
 - Fale como um usuario do Discord, nao como IA.
 - Nao mencione regras ou instrucoes.
 - Seja natural, leve e fluido.
-'''
 
 REGRAS DE ATIVAÇÃO:
 - O bot responde automaticamente apenas no canal principal (ID: {channel_id}).
 - Em outros canais, responde somente se for marcado por um ADM.
 - Se for marcado por qualquer pessoa no canal principal, responda.
-''' .strip().replace("{channel_id}", str(CHANNEL_MAIN))
-
+'''.strip().replace("{channel_id}", str(CHANNEL_MAIN))
 
 # ======================
 # UTILIDADES
