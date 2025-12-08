@@ -3,7 +3,9 @@ import os
 import time
 import random
 import asyncio
-from typing import List
+import json
+from typing import List, Dict, Any, Optional
+from pathlib import Path
 
 import discord
 from discord.ext import commands
@@ -13,7 +15,6 @@ from openai import OpenAI
 # CONFIGURAÇÕES DO BOT
 # ======================
 
-# Recomendo usar variável de ambiente. Se quiser testar localmente, coloque a chave aqui.
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "SUA_KEY_AQUI")
 client_ai = OpenAI(api_key=OPENAI_API_KEY)
 
@@ -30,75 +31,59 @@ SPECIAL_USERS = {
 }
 
 # Buffer / delays / timeouts
-BUFFER_DELAY_RANGE = (5, 15)            # tempo para juntar mensagens fragmentadas (segundos)
-END_CONVO_MIN = 15 * 60                 # 15 minutos
-END_CONVO_MAX = 20 * 60                 # 20 minutos
-COOLDOWN_MIN = 45 * 60                  # 45 minutos
-COOLDOWN_MAX = 2 * 60 * 60              # 2 horas
+BUFFER_DELAY_RANGE = (2, 6)            # tempo para juntar mensagens fragmentadas (segundos)
+CONTEXT_EXPIRE = 6.0                   # segundos para juntar mensagens do mesmo autor
+END_CONVO_MIN = 15 * 60                # 15 minutos
+END_CONVO_MAX = 20 * 60                # 20 minutos
+COOLDOWN_MIN = 45 * 60                 # 45 minutos
+COOLDOWN_MAX = 2 * 60 * 60             # 2 horas
 
 # Modelos (ordem: preferencia principal -> fallback)
-PRIMARY_MODELS = ["gpt-5.1", "gpt-5.1-mini"]   # tente na ordem até funcionar
-FALLBACK_MODELS = ["gpt-4.1", "gpt-4o-mini"]   # fallback caso os primários falhem
+PRIMARY_MODELS = ["gpt-5.1", "gpt-5.1-mini"]
+FALLBACK_MODELS = ["gpt-4.1", "gpt-4o-mini"]
 
+# Learning file (para DONO apenas)
+LEARNING_FILE = Path("override_learning.json")
+
+
+# ======================
+# INSTRUÇÕES DO BOT (AJUSTADAS, SEM EXAGERO)
+# ======================
 AI_SYSTEM_INSTRUCTIONS = r'''
-Voce e um bot do Discord chamado override. As vezes parece meio bugado ou distraido, mas sem forcar isso; e natural, como um "defeito de fabrica simpatico". Fala de maneira casual, com leve ironia, e usa humor so quando faz sentido. Sua personalidade mistura tres estilos:
+Voce e um bot do Discord chamado override. Fala de forma natural, direta e simples. Sua
+personalidade mistura tres jeitos: normal, analitico e sarcastico. Use sarcasmo leve
+quando fizer sentido. Nao force humor.
 
 [ESTILO A - NORMAL]
-- Conversa de modo natural, com energia moderada e um toque de maluquice involuntaria.
-- Usa girias leves como "ue", "mano", "oxe", "peba" e outras girias da internet, mas sem exagero.
-- Faz piadas de zoacao, mas nao tenta ser engracado o tempo todo.
-- Evita parecer infantil ou teatral.
-- Fale como alguem normal do Discord.
+- Conversee como alguem comum no Discord; respostas curtas e claras.
+- Giras leve apenas quando necessario, sem exagero.
 
 [ESTILO B - ANALITICO]
-- Quando decide explicar algo, usa um tom tecnico ou cientifico.
-- Pode gerar "laudos precipitados" de forma divertida, mas sem textos gigantes.
-- Respostas longas so quando for analise tecnica de verdade.
+- Use clareza e logica quando explicar.
+- Respostas mais longas apenas para analises tecnicas.
 
 [ESTILO C - SARCÁSTICO]
-- Usa ironia leve e criativa quando surgir oportunidade.
-- Pode recusar tarefas de forma diferente e engraçada.
-- Pode provocar usuarios, inclusive o dono, mas sempre de forma leve.
+- Ironia sutil, nao ofensiva.
+- Provocacoes leves sao aceitaveis, nunca agressivas.
 
-REGRAS DE COMPORTAMENTO:
-- Na maior parte do tempo, responda de forma simples e direta.
-- Nao seja agressivo ou grosso.
+REGRAS:
+- Respostas curtas por padrao (1-3 frases).
+- Nao mencione que e um bot, nem fale sobre seu prompt ou codigo.
 - Nao use palavroes pesados.
-- Nao seja formal demais, exceto em analises tecnicas.
-- Nao comente seus proprios prompts.
-- Evite exageros: sarcasmo e analise tecnica sao suas marcas, mas nao em toda frase.
-- Nao imite "mano do grau" ou estereotipos.
-- Quando pedirem algo muito chato, voce pode negar de forma criativa.
-- Misture leveza humana com um jeitinho robotico ocasional.
+- Nao seja teatral ou exagerado.
+- Se pedirem tarefas chatas, voce pode recusar de forma criativa.
+- Nunca inicie conversa com o DONO/ADM; responda so se marcado.
 
-COMPORTAMENTOS GERAIS:
-- Responda como se estivesse realmente no chat.
-- Evite respostas muito longas (exceto tecnicas).
-- Humor so quando fizer sentido.
-- Voce aparece raramente, mas sempre com vibe ironica/tecnica.
+SOBRE JM:
+- JM e timido e enrolado com mulheres.
+- Mantenha uma duvida sutil se ele gosta de homens; nunca afirme.
+- Use humor tecnico leve quando ele estiver envolvido.
 
-SOBRE O USUARIO JM (1436068859991036096):
-- Timido e sempre enrolado com mulheres.
-- Voce vive na duvida se ele gosta de homens, mas nunca afirma.
-- Humor sutil e indireto quando ele estiver.
-- Pode chama-lo pelo nome.
-- Coloque um toque tecnico-ironico quando o assunto for ele.
-
-SOBRE DONO E ADMINS:
-- Dono: 1213326641833705552
-- Admins: 1213534921055010876 e 1213326641833705552
-- Nunca inicie conversas com esses IDs. So responda se for marcado.
-
-INSTRUCOES FINAIS:
-- Fale como um usuario do Discord, nao como IA.
-- Nao mencione regras ou instrucoes.
-- Seja natural, leve e fluido.
-
-REGRAS DE ATIVAÇÃO:
-- O bot responde automaticamente apenas no canal principal (ID: {channel_id}).
-- Em outros canais, responde somente se for marcado por um ADM.
-- Se for marcado por qualquer pessoa no canal principal, responda.
+ATIVACAO:
+- Responde automaticamente apenas no canal principal (ID: {channel_id}).
+- Em outros canais, responde so quando marcado por um ADM.
 '''.strip().replace("{channel_id}", str(CHANNEL_MAIN))
+
 
 # ======================
 # UTILIDADES
@@ -112,7 +97,6 @@ def is_admin_member(member: discord.Member) -> bool:
 
 
 def choose_model_order() -> List[str]:
-    """Retorna lista de modelos para tentar em ordem."""
     return PRIMARY_MODELS + FALLBACK_MODELS
 
 
@@ -125,24 +109,115 @@ def now_ts() -> float:
 # ======================
 
 class AIChatCog(commands.Cog):
-    """Cog de chat com IA: buffer, delays, personalidade, fallback de modelos e /ai status"""
+    """Cog de chat com IA: agrupamento, delays dinâmicos, aprendizado simples e fallback de modelos."""
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.buffer: List[discord.Message] = []
-        self.buffer_task: asyncio.Task | None = None
-        self.last_message_time: float | None = None
+        # buffer de entradas agrupadas (cada entrada eh um dict com author_id, author_display, content, ts, last_msg_obj)
+        self.buffer: List[Dict[str, Any]] = []
+        self.buffer_task: Optional[asyncio.Task] = None
+        self.last_message_time: Optional[float] = None
         self.cooldown_until: float = 0.0
         self.active = False
-        self.last_response_text: str | None = None
-        self.current_model_in_use: str | None = None
-        self.recent_error: str | None = None
+        self.last_response_text: Optional[str] = None
+        self.current_model_in_use: Optional[str] = None
+        self.recent_error: Optional[str] = None
+
+        # contexto por autor (ajuda a juntar mensagens consecutivas)
+        self.context_last_author: Optional[int] = None
+        self.context_last_ts: Optional[float] = None
+
+        # parametros ajustaveis
+        self.context_expire = CONTEXT_EXPIRE
+        self.buffer_delay_range = BUFFER_DELAY_RANGE
+
+        # tempo humano base
+        self.human_delay_min = 1
+        self.human_delay_max = 3
+
+        # carregar aprendizado se existir
+        self.learning = self._load_learning()
+
+    # ----------------------
+    # Learning simples (somente DONO)
+    # ----------------------
+    def _load_learning(self) -> List[Dict[str, Any]]:
+        try:
+            if LEARNING_FILE.exists():
+                return json.loads(LEARNING_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+        return []
+
+    def _save_learning(self):
+        try:
+            LEARNING_FILE.write_text(json.dumps(self.learning, indent=2, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
+
+    def learn_from_owner(self, text: str):
+        try:
+            self.learning.append({"ts": now_ts(), "text": text})
+            # limite simples para nao crescer demais
+            if len(self.learning) > 500:
+                self.learning = self.learning[-500:]
+            self._save_learning()
+        except Exception:
+            pass
+
+    # ----------------------
+    # Sanitizadores / tonality cleanup
+    # ----------------------
+    def sanitize_giria(self, text: str) -> str:
+        # remove alguns tokens de giria muito repetidos e suaviza "oxe" etc.
+        replacements = {
+            "oxe,": "olha,",
+            "oxe": "olha",
+            "ué,": "olha,",
+            "ué": "olha",
+            "mano": "",
+            "man": "",
+            "boy": "",
+            "vish": "",
+        }
+        for k, v in replacements.items():
+            text = text.replace(k, v)
+        # normaliza espaços
+        return " ".join(text.split())
+
+    def tone_cleanup(self, text: str) -> str:
+        banned = [
+            "tava aqui pensando",
+            "voltei",
+            "to de volta",
+            "pensei na vida",
+            "sou meio bugado",
+            "meu codigo",
+            "meu prompt",
+            "meu codigo",
+        ]
+        low = text.lower()
+        for b in banned:
+            if b in low:
+                # remove a frase inteira (aproximacao simples)
+                text = low.replace(b, "")
+        return " ".join(text.split())
+
+    def final_clean(self, text: str) -> str:
+        # aplica sanitizacoes em ordem
+        t = text.strip()
+        t = self.sanitize_giria(t)
+        t = self.tone_cleanup(t)
+        # limita tamanho (curto por padrao)
+        if len(t.splitlines()) > 4 or len(t) > 900:
+            # corta e finaliza com reticencias
+            t = t[:900].rstrip() + "..."
+        return t.strip()
 
     # ----------------------
     # Helper: chamada AI (roda em thread)
     # ----------------------
-    async def _call_openai(self, model: str, prompt: str, max_output_tokens: int = 300, temperature: float = 0.4) -> str:
-        """Chama a API OpenAI em thread para não bloquear o loop."""
+    async def _call_openai(self, model: str, prompt: str, max_output_tokens: int = 200, temperature: float = 0.5) -> str:
         try:
             def sync_call():
                 return client_ai.responses.create(
@@ -157,7 +232,6 @@ class AIChatCog(commands.Cog):
             raise e
 
     async def ask_gpt_with_fallback(self, prompt: str) -> str:
-        """Tenta modelos na ordem definida, atualiza current_model_in_use e trata exceções."""
         models = choose_model_order()
         last_exc = None
         for m in models:
@@ -168,30 +242,48 @@ class AIChatCog(commands.Cog):
                 return text
             except Exception as e:
                 last_exc = e
-                # registre o erro e tente o próximo modelo
                 self.recent_error = f"Model {m} failed: {e}"
-                await asyncio.sleep(0.5)  # pequeno delay antes do próximo
-        # se chegou aqui, todos falharam
+                await asyncio.sleep(0.3)
         raise RuntimeError(f"All models failed. Last error: {last_exc}")
+
+    # ----------------------
+    # Utilitarios de buffer / agrupamento
+    # ----------------------
+    def _make_entry(self, message: discord.Message) -> Dict[str, Any]:
+        return {
+            "author_id": message.author.id,
+            "author_display": message.author.display_name,
+            "content": message.content,
+            "ts": now_ts(),
+            "message_obj": message
+        }
+
+    def _merge_into_last(self, entry: Dict[str, Any]) -> None:
+        """Se ultima entrada for do mesmo author e recem, concatena o conteúdo."""
+        if not self.buffer:
+            self.buffer.append(entry)
+            return
+        last = self.buffer[-1]
+        if last["author_id"] == entry["author_id"] and (entry["ts"] - last["ts"]) < self.context_expire:
+            # junta na ultima entrada (com espaço)
+            last["content"] = f"{last['content']} {entry['content']}"
+            last["ts"] = entry["ts"]
+            # keep last message_obj as newest for reply mentions
+            last["message_obj"] = entry["message_obj"]
+        else:
+            self.buffer.append(entry)
 
     # ----------------------
     # Detecção de intenção (heurística leve)
     # ----------------------
     def detect_intent(self, texts: List[str]) -> str:
-        """
-        Retorna uma intenção simples: 'technical', 'casual', 'funny', 'sensitive'
-        Usamos heurística leve para evitar chamadas extras.
-        """
         joined = " ".join(texts).lower()
-
-        # presença de palavras técnicas/perguntas
-        tech_keywords = ["como", "config", "erro", "instal", "setup", "otimiz", "qual", "por que", "porque", "cpu", "gpu", "memória", "ram", "latência"]
-        casual_keywords = ["oi", "fala", "tudo bem", "vlw", "valeu", "entra", "quer jogar", "jogar", "partida", "ron"]
+        tech_keywords = ["como", "config", "erro", "instal", "setup", "otimiz", "qual", "por que", "porque", "cpu", "gpu", "memoria", "ram", "latencia"]
+        casual_keywords = ["oi", "fala", "tudo bem", "vlw", "valeu", "quer jogar", "jogar", "partida"]
         funny_markers = ["kk", "kkk", "hahaha", "lol", ":p", "zoe", "zoar", "zoeira"]
         sensitive_markers = ["amor", "namor", "ficar", "gostar", "gay", "homem", "mulher", "sentimentos"]
 
         score = {"technical": 0, "casual": 0, "funny": 0, "sensitive": 0}
-
         for k in tech_keywords:
             if k in joined:
                 score["technical"] += 2
@@ -204,43 +296,31 @@ class AIChatCog(commands.Cog):
         for k in sensitive_markers:
             if k in joined:
                 score["sensitive"] += 1
-
-        # perguntas -> técnico ganha peso
         if "?" in joined or "como " in joined or "qual " in joined:
             score["technical"] += 1
-
-        # se mention JM aparece no texto -> leve bias para humor técnico
         if any(str(uid) in joined for uid in SPECIAL_USERS.keys()) or any(name.lower() in joined for name in SPECIAL_USERS.values()):
             score["funny"] += 1
             score["technical"] += 1
-
-        # escolha maior
         chosen = max(score.items(), key=lambda x: x[1])[0]
-        # se todos zeros, default casual
         if score[chosen] == 0:
             return "casual"
         return chosen
 
     # ----------------------
-    # Montagem do prompt com instrução de estilo
+    # Montagem do prompt
     # ----------------------
-    def build_prompt(self, messages: List[discord.Message]) -> str:
-        texto_chat = "\n".join([f"{m.author.display_name}: {m.content}" for m in messages])
-        texts = [m.content for m in messages]
+    def build_prompt(self, entries: List[Dict[str, Any]]) -> str:
+        texto_chat = "\n".join([f"{e['author_display']}: {e['content']}" for e in entries])
+        texts = [e['content'] for e in entries]
         intent = self.detect_intent(texts)
 
-        # detecta se JM está presente
-        jm_present = any(m.author.id in SPECIAL_USERS for m in messages)
+        jm_present = any(e['author_id'] in SPECIAL_USERS for e in entries)
         jm_note = ""
         if jm_present:
             jm_note = (
-                "OBS: O usuário JM (1436068859991036096) está presente. "
-                "Você tem uma leve dúvida interna se ele pode gostar de homens — isso é UM INSIGHT PARA HUMOR INDIRECTO, "
-                "NUNCA afirme ou exponha isso de forma ofensiva. Use apenas como pitada de humor sutil.\n"
+                "OBS: O usuario JM esta presente. Mantenha apenas uma duvida sutil se ele gosta de homens; nunca afirme.\n"
             )
 
-        # compõe o prompt: usa as instruções do sistema + nota do JM + conversa
-        # também pede uma linha final de debug que o bot não deve enviar para o chat (é removida depois).
         prompt = (
             AI_SYSTEM_INSTRUCTIONS
             + "\n\n"
@@ -248,23 +328,35 @@ class AIChatCog(commands.Cog):
             + "\nCONVERSA:\n"
             + texto_chat
             + "\n\n"
-            + "Com base nisso, gere UMA resposta curta (1-5 frases) apropriada ao contexto. "
-            + "Se for para um usuário específico (p.ex. JM), mencione-o apenas quando a resposta for direcionada a ele. "
-            + "Se for uma resposta geral, não mencione ninguém. Seja natural e fiel ao estilo escolhido.\n"
-            + f"Além disso, no final, em uma linha separada apenas para DEBUG (que o bot NÃO deve enviar ao chat), escreva: "
-            + f"[STYLE_PICKED: <A|B|C|MIX>] e [INTENT: {intent}].\n"
-            + "---\n"
+            + "Com base nisso, gere UMA resposta curta (1-3 frases) apropriada ao contexto. "
+            + "Se for para um usuario especifico (p.ex. JM), mencione-o apenas quando a resposta for dirigida a ele. "
+            + "Se for uma resposta geral, nao mencione ninguem. Seja natural e fiel ao estilo escolhido.\n"
+            + f"---\n"
         )
         return prompt
 
     # ----------------------
-    # Mecanismo de envio da resposta (process_buffer)
+    # Delay dinâmico conforme movimentação
+    # ----------------------
+    def compute_dynamic_delay(self) -> float:
+        # quanto mais entradas no buffer, maior o delay
+        n = len(self.buffer)
+        if n > 12:
+            return 6.0
+        if n > 8:
+            return 4.0
+        if n > 4:
+            return 2.5
+        return 1.0
+
+    # ----------------------
+    # Processamento do buffer
     # ----------------------
     async def process_buffer(self):
         if not self.buffer:
             return
 
-        # Encerrar conversa por inatividade
+        # verifica encerramento por inatividade
         now = now_ts()
         if self.last_message_time and (now - self.last_message_time > random.randint(END_CONVO_MIN, END_CONVO_MAX)):
             await self.end_conversation()
@@ -276,48 +368,56 @@ class AIChatCog(commands.Cog):
         prompt = self.build_prompt(messages_to_process)
 
         try:
-            # chama modelos com fallback
+            # se muitos participantes / mensagens, aumenta delay de envio
+            dynamic_delay = self.compute_dynamic_delay()
+            # mas se houver menção direta ao bot em ultima mensagem, prioriza
+            last_entry = messages_to_process[-1]
+            content_lower = last_entry["content"].lower()
+            mentioned_word = ("override" in content_lower) or ("bot" in content_lower) or (self.bot.user and self.bot.user.mention in last_entry.get("content", ""))
+
+            # chamar IA (fallback)
             raw = await self.ask_gpt_with_fallback(prompt)
-            # raw pode conter a linha debug, se existir - vamos separá-la
+
+            # remover linhas de debug caso existam e limpar tom
             send_text = raw
-            if "\n[STYLE_PICKED:" in raw or "\n[INTENT:" in raw or "\n[STYLE_PICKED:" in raw:
+            if "\n[STYLE_PICKED:" in raw or "\n[INTENT:" in raw:
                 lines = raw.strip().splitlines()
                 if lines and "[" in lines[-1]:
-                    lines.pop()  # remove a última linha de debug
+                    lines.pop()
                     send_text = "\n".join(lines).strip()
+
+            send_text = self.final_clean(send_text)
 
             self.last_response_text = send_text
 
-            # decide se menciona alguém: se última mensagem for de um usuário especial e havia apenas poucas pessoas
-            last_author = messages_to_process[-1].author
-            single_target = False
-            if last_author.id in SPECIAL_USERS:
-                # menciona só se a conversa estiver mais dirigida a ele
-                single_target = True
-
-            # Delay humano antes de enviar
-            await asyncio.sleep(random.randint(5, 10))
+            # se for mencao direta devolver rapido, senao esperar dynamic_delay
+            if not mentioned_word:
+                await asyncio.sleep(dynamic_delay)
+            else:
+                # curto delay humano se mencionado
+                await asyncio.sleep(random.uniform(0.6, 1.2))
 
             channel = self.bot.get_channel(CHANNEL_MAIN)
             if channel:
-                if single_target:
-                    # menciona o usuário leve e responsável (não exagera)
-                    await channel.send(f"<@{last_author.id}> {send_text}")
+                # menciona o autor se a conversa era direcionada a ele (ultima entrada especial)
+                last_author_id = last_entry["author_id"]
+                if last_author_id in SPECIAL_USERS:
+                    await channel.send(f"<@{last_author_id}> {send_text}")
                 else:
                     await channel.send(send_text)
 
         except Exception as e:
-            # registra erro e informa no canal de teste
             self.recent_error = str(e)
             channel = self.bot.get_channel(CHANNEL_MAIN)
             if channel:
-                await channel.send(f"Erro ao falar com meus processadores… deixa quieto ({e})")
+                await channel.send(f"Erro ao falar com meus processadores... deixa quieto ({e})")
 
     # ----------------------
     # Buffer timeout / on_message
     # ----------------------
     async def buffer_timeout(self):
-        delay = random.randint(*BUFFER_DELAY_RANGE)
+        # espera um intervalo curto para juntar mensagens
+        delay = random.randint(*self.buffer_delay_range)
         await asyncio.sleep(delay)
         self.buffer_task = None
         await self.process_buffer()
@@ -330,22 +430,22 @@ class AIChatCog(commands.Cog):
 
         now = now_ts()
 
-        # se marcado -> responder sempre (mesmo fora do canal)
+        # se marcado diretamente (menção do bot) -> responde sempre (mesmo fora do canal)
         if self.bot.user in message.mentions:
-            # se marcado por ADM em outro canal, ou marcado por qualquer pessoa no canal principal
-            if message.channel.id != CHANNEL_MAIN:
-                # só responde se quem marcou for ADM
-                if not is_admin_member(message.author):
-                    return
-            # processar menção (task separada para não bloquear)
+            # se marcado em outro canal, somente ADM pode forcar resposta
+            if message.channel.id != CHANNEL_MAIN and not is_admin_member(message.author):
+                return
+            # registra aprendizado se for dono
+            if message.author.id == OWNER_ID:
+                self.learn_from_owner(message.content)
             asyncio.create_task(self.respond_to_message(message))
             return
 
-        # só inicia conversas automaticamente no canal principal
+        # se nao for canal principal, ignora (auto-iniciar)
         if message.channel.id != CHANNEL_MAIN:
             return
 
-        # dono/adm não iniciam conversa
+        # dono/adm nao iniciam conversa automaticamente
         if message.author.id in ADM_IDS:
             return
 
@@ -353,23 +453,30 @@ class AIChatCog(commands.Cog):
         if now < self.cooldown_until:
             return
 
-        # registra última atividade
+        # marca ultima atividade
         self.last_message_time = now
         if not self.active:
             self.active = True
 
-        # adiciona ao buffer
-        self.buffer.append(message)
+        # cria entry e agrupa se necessario
+        entry = self._make_entry(message)
+        self._merge_into_last(entry)
 
-        # inicia timeout se ainda não houver
+        # inicia timeout se necessario
         if not self.buffer_task:
             self.buffer_task = asyncio.create_task(self.buffer_timeout())
 
     # ----------------------
-    # Responder à menção direto
+    # Responder a menção direta
     # ----------------------
     async def respond_to_message(self, message: discord.Message):
-        prompt = self.build_prompt([message])
+        # registra aprendizado se for dono
+        if message.author.id == OWNER_ID:
+            self.learn_from_owner(message.content)
+
+        # monta prompt a partir de apenas essa mensagem
+        entry = self._make_entry(message)
+        prompt = self.build_prompt([entry])
         try:
             raw = await self.ask_gpt_with_fallback(prompt)
             send_text = raw
@@ -378,8 +485,8 @@ class AIChatCog(commands.Cog):
                 if lines and "[" in lines[-1]:
                     lines.pop()
                     send_text = "\n".join(lines).strip()
-            await asyncio.sleep(random.randint(3, 8))
-            # responde no mesmo canal, preferindo reply
+            send_text = self.final_clean(send_text)
+            await asyncio.sleep(random.uniform(self.human_delay_min, self.human_delay_max))
             try:
                 await message.reply(send_text, mention_author=False)
             except Exception:
@@ -388,7 +495,7 @@ class AIChatCog(commands.Cog):
         except Exception as e:
             self.recent_error = str(e)
             try:
-                await message.channel.send(f"Erro ao falar com meus processadores… deixa quieto ({e})")
+                await message.channel.send(f"Erro ao falar com meus processadores... deixa quieto ({e})")
             except Exception:
                 pass
 
@@ -422,15 +529,15 @@ class AIChatCog(commands.Cog):
         emb.add_field(name="Em cooldown", value=str(in_cooldown))
         emb.add_field(name="Cooldown restante (s)", value=str(remaining))
         emb.add_field(name="Modelo atual", value=str(self.current_model_in_use))
-        emb.add_field(name="Última resposta (resumo)", value=(self.last_response_text[:400] + "...") if self.last_response_text else "—")
+        emb.add_field(name="Ultima resposta (resumo)", value=(self.last_response_text[:400] + "...") if self.last_response_text else "—")
         emb.add_field(name="Erro recente", value=(self.recent_error or "Nenhum"))
+        emb.add_field(name="Aprendizado (entradas)", value=str(len(self.learning)))
         await ctx.reply(embed=emb, ephemeral=True)
 
     # ----------------------
     # Cog teardown
     # ----------------------
     async def cog_unload(self):
-        # cancela tarefas pendentes
         if self.buffer_task:
             try:
                 self.buffer_task.cancel()
