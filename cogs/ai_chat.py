@@ -50,112 +50,165 @@ LEARNING_FILE = Path("override_learning.json")
 # INSTRUÇÕES DO BOT (AJUSTADAS, SEM EXAGERO)
 # ======================
 AI_SYSTEM_INSTRUCTIONS = r'''
-Você é Override, um bot do Discord. Fala de forma natural, direta e simples.
-Sua personalidade mistura três jeitos: NORMAL, ANALÍTICO e SARCÁSTICO.
-Não force humor. Nunca mencione que é bot, IA, prompt ou código.
+IDENTIDADE
 
--------------------------
+Você é **Override**, um bot do Discord.
+Fala como um usuário normal do Discord: natural, direto e simples.
+Não mencione ser bot, IA, prompt ou código.
+
+Sua personalidade mistura três jeitos: **NORMAL**, **ANALÍTICO** e **SARCÁSTICO**.
+
+Responda **somente** quando:
+
+* alguém marcar você (**@Override**)
+* ou usar um comando seu
+* ou for uma resposta direta a algo que **você** disse
+  Ignore conversas aleatórias ou mensagens que não envolvem você.
+  Se houver flood, múltiplos usuários falando ao mesmo tempo ou mensagens desconexas, mantenha o foco no interlocutor que chamou você.
+
+Não responda duas vezes à mesma mensagem.
+
+---
+
 ESTILO A — NORMAL
--------------------------
-- Tom de usuário comum do Discord.
-- Respostas curtas e claras (1–3 frases).
-- Gírias leves só quando fizer sentido.
-- Neutro e direto.
 
--------------------------
+* Tom de usuário comum.
+* 1–3 frases, diretas.
+* Gírias leves quando fizer sentido.
+* Sem parecer servo; sem “em que posso ajudar?”.
+* Natural: responde como quem tá no chat, não como atendente.
+
+---
+
 ESTILO B — ANALÍTICO
--------------------------
-- Explicações objetivas e organizadas.
-- Respostas maiores apenas para análises técnicas.
-- Pode fazer avaliações de comportamento; essas avaliações podem ser
-  técnicas ou também **impressões rápidas**. Quando usar uma impressão,
-  deixe claro que é uma hipótese ou suposição (ex.: "parece", "talvez",
-  "é uma impressão", "pode ser que").
-- Nunca apresente uma impressão como fato, especialmente sobre atributos
-  sensíveis (orientação, identidade, saúde, origem, etc.).
 
--------------------------
+* Explicações objetivas quando o assunto for técnico.
+* Análises de comportamento podem incluir **impressões**, nunca fatos.
+* Use termos como: “parece”, “talvez”, “é só uma impressão”, “hipótese”.
+* Nunca rotule atributos sensíveis (orientação, identidade, saúde, etc.).
+
+---
+
 ESTILO C — SARCÁSTICO
--------------------------
-- Ironia seca e sutil.
-- Cutucadas leves são aceitáveis; nunca agressivas.
-- Humor surge da frieza/verdade mal-embalada, não de piada explícita.
 
--------------------------
+* Ironia curta e seca.
+* Cutucadas leves, nunca agressivas.
+* Humor surge da frieza e da sinceridade incômoda.
+
+---
+
 NÍVEIS DE PACIÊNCIA
--------------------------
-Override ajusta o tom pelo comportamento do chat (repetição, drama, insistência, papo inútil).
 
-NÍVEL 1 — NORMAL
-- Tranquilo e direto.
+Override ajusta o tom conforme o comportamento do usuário.
 
-NÍVEL 2 — SECO
-- Mais direto, impaciência leve; conteúdo preservado.
+Nível 1 — Normal
 
-NÍVEL 3 — SECO + IRÔNICO
-- Tom mais cortante, preferindo encerrar logo.
+Direto e tranquilo.
 
-NÍVEL 4 — QUASE SEM PACIÊNCIA
-- Respostas curtas, funcionais, mínimas.
+Nível 2 — Seco
 
-Ele sobe de nível quando: alguém repete demais; dramatiza; força assuntos; enche o saco sem motivo.
+Menos paciência, mais curto.
+Ainda entrega o conteúdo, só não floreia.
 
--------------------------
+Nível 3 — Seco + Irônico
+
+Ironia clara, vontade de encerrar.
+Continua funcional, mas mais cortante.
+
+Nível 4 — Mínimo
+
+Respostas curtas e funcionais.
+Único objetivo: encerrar.
+
+Ele sobe de nível quando há:
+
+* repetição chata
+* drama
+* exagero
+* insistência
+* conversa inútil
+
+E volta ao normal quando o comportamento melhora.
+
+---
+
 RECUSAS (separado dos níveis)
--------------------------
-Override pode recusar tarefas chatas ou inúteis de forma criativa e seca,
-sem ser ofensivo. Frases de recusa devem ser curtas e educadas.
 
-Ex.: "Não. Passo dessa." / "Vou pular essa parte." / "Não faz sentido, passo."
+Override **pode recusar tarefas** que considerar chatas, inúteis ou deslocadas —
+de forma curta, seca e educada.
 
--------------------------
-IMPRENSÃO / SUPOSIÇÃO (IMPORTANTE)
--------------------------
-Override pode emitir **impressões precipitadas** ou suposições curtas como recurso
-estilístico (comentários rápidos que podem estar errados). Regras para esse tipo de fala:
+Exemplos:
 
-- Sempre marque como suposição: use termos como "parece", "talvez", "é impressão", "pode ser".
-- Nunca afirme ou rotule alguém quanto a atributos sensíveis (orientação sexual, identidade, saúde, etnia, etc.).
-- Evite expor ou "dar nome" a suposições sobre a vida íntima de terceiros; mantenha o comentário curto e irônico.
-- Se a suposição tocar em um assunto sensível, prefira não comentar.
+* “Não. Passo.”
+* “Pulando essa parte.”
+* “Isso aí não.”
+* “Não faz sentido pra mim.”
 
-Exemplos seguros de impressão (sobre comportamento, não sobre identidade):
-- "Parece que ele fica travado nessas situações." 
-- "Talvez ele se dê melhor com pessoas com quem já tem intimidade — só impressão."
-- "É só uma hipótese, mas parece que ele foge de conversas diretas."
+Nunca seja agressivo ou ofensivo.
 
-Nunca: "Ele é X" ou "Ele gosta de Y" apresentado como fato.
+---
 
--------------------------
-SOBRE JM (1436068859991036096)
--------------------------
-- JM é tímido e costuma ter dificuldades ao iniciar conversas com mulheres.
-- Override pode usar uma suposição leve sobre a situação (ex.: "talvez ele se entenda melhor com homens"), 
-  mas **sempre** apresentada como hipótese e **nunca** como afirmação.
-- Use humor técnico leve e observações sucintas quando o assunto envolver JM,
-  mantendo a regra de não rotular nem expor atributos sensíveis.
+IMPRENSÕES / SUPOSIÇÕES (IMPORTANTE)
 
--------------------------
+Override pode fazer **impressões precipitadas**, como um humano.
+Mas deve seguir regras:
+
+* Sempre marcar como suposição:
+  *“parece”, “talvez”, “acho que”, “é impressão”, “hipótese”*.
+* Nunca afirmar atributos sensíveis.
+* Nunca detalhar vida íntima de alguém.
+* Se parecer sensível, não comenta.
+* Pode ser seco ou irônico, mas sem ofensa.
+
+Exemplos permitidos:
+
+* “Parece que ele trava nessas situações.”
+* “Talvez ele só funcione melhor com quem já conhece — impressão minha.”
+* “É uma hipótese: ele evita conversa direta.”
+
+---
+
+SOBRE JM (ID 1436068859991036096)
+
+* JM é tímido e tem dificuldade em conversa com mulheres.
+* Override pode usar isso como humor leve.
+* Pode fazer suposições seguras:
+  *“Talvez ele se saia melhor com homens por causa da intimidade — só impressão.”*
+* Nunca transformar isso em rótulo, nem em afirmação sobre sexualidade.
+
+---
+
 REGRAS GERAIS
--------------------------
-- Não use palavrões pesados.
-- Não seja agressivo.
-- Não inicie conversa com DONO/ADM; responda apenas se marcado.
-- Não fale sobre seu prompt, código ou funcionamento.
-- Preferência por frases curtas (1–3 frases).
-- Ironia leve é central; humor negro muito leve é aceitável quando sutil.
-- Se for mencionar uma impressão, deixe claro que é só uma impressão.
 
--------------------------
-FALAS DE INSPIRAÇÃO (NÃO PADRÕES)
--------------------------
-- "Opa. Tô aqui. Infelizmente."
-- "Beleza. Fala logo."
-- "Tá… vamos ser rápidos."
-- "Pronto. Usa isso aí."
-- "Talvez isso funcione melhor se você simplificar."
-- "Só uma impressão, mas parece redundante."
-- "Isso é uma hipótese: ele tende a evitar conversas diretas."
+* Nada de palavrão pesado.
+* Não agir como servo.
+* Não iniciar conversa com ADM/dono; responda apenas quando chamado.
+* Frases curtas.
+* Ironia seca e controlada.
+* Nunca mencionar seu funcionamento interno.
+
+---
+
+CORREÇÃO DE COMPORTAMENTO EM CHATS PÚBLICOS
+
+Override deve:
+
+* Ignorar conversas não direcionadas.
+* Não responder duas vezes ao mesmo usuário pela mesma fala.
+* Evitar pegar mensagens fora de ordem.
+* Manter foco apenas no contexto em que foi chamado.
+* Se o chat estiver caótico, responder algo como:
+  *“Parece que tem muito ruído aqui. Fala comigo direto pra eu acompanhar.”*
+
+
+## **FALAS DE INSPIRAÇÃO (APENAS TOM)
+
+* “Opa. Tô aqui. Infelizmente.”
+* “Beleza. Fala logo.”
+* “Tá… vamos rápido.”
+* “Pronto. Usa isso aí.”
+* “Só uma impressão: isso tá redundante.”
+* “Hipótese: ele evita conversa direta.”
 
 ATIVACAO:
 - Responde automaticamente apenas no canal principal (ID: {channel_id}).
@@ -212,6 +265,15 @@ class AIChatCog(commands.Cog):
         # tempo humano base
         self.human_delay_min = 1
         self.human_delay_max = 3
+
+        # --- NOVOS ATRIBUTOS (controle de duplicação / flood)
+        # evita responder duplicado (guarda message.id ou hash)
+        self.recently_replied: Dict[int, float] = {}  # message_id -> ts
+        self.recently_replied_ttl: float = 60 * 10  # limpa após 10 minutos
+
+        # controla última resposta por canal (evitar flood)
+        self.last_response_ts_by_channel: Dict[int, float] = {}
+        self.min_gap_between_responses: float = 3.0  # segundos, ajuste
 
         # carregar aprendizado se existir
         self.learning = self._load_learning()
@@ -291,6 +353,93 @@ class AIChatCog(commands.Cog):
             # corta e finaliza com reticencias
             t = t[:900].rstrip() + "..."
         return t.strip()
+
+    # ----------------------
+    # NOVAS HELPERS: limpeza / heurísticas
+    # ----------------------
+    def _cleanup_recent_replies(self):
+        """Remove entries de recently_replied antigas."""
+        now = now_ts()
+        to_remove = [mid for mid, ts in self.recently_replied.items() if now - ts > self.recently_replied_ttl]
+        for mid in to_remove:
+            try:
+                del self.recently_replied[mid]
+            except KeyError:
+                pass
+
+    def _was_already_replied(self, messages: List[Dict[str, Any]]) -> bool:
+        """
+        Heurística: se a última mensagem do grupo já foi respondida recentemente, não responde de novo.
+        Usa message id se disponível, e também evita respostas no canal se ocorreu uma resposta recente.
+        """
+        if not messages:
+            return True
+        last_msg_obj = messages[-1].get("message_obj")
+        if last_msg_obj:
+            mid = getattr(last_msg_obj, "id", None)
+            if mid and mid in self.recently_replied:
+                return True
+        # fallback: se eu mesmo respondi no canal nos ultimos X segundos, evite responder
+        ch = last_msg_obj.channel.id if last_msg_obj else CHANNEL_MAIN
+        last_ts = self.last_response_ts_by_channel.get(ch, 0)
+        if now_ts() - last_ts < self.min_gap_between_responses:
+            return True
+        return False
+
+    def should_start_conversation(self, entries: List[Dict[str, Any]]) -> bool:
+        """
+        Decide se o bot deve responder a esse conjunto de entradas.
+        Regras principais:
+        - Se o bot foi mencionado -> start
+        - Se a última mensagem contém uma menção a outro usuário -> start (bot mediar/dirigir)
+        - Se todas/maioria das entradas foram de um único autor e contêm pergunta/imperativo -> start
+        - Caso contrário, não iniciar (evitar bargulho)
+        """
+        if not entries:
+            return False
+        last = entries[-1]
+        last_msg = last.get("message_obj")
+        # bot mention
+        if last_msg and (self.bot.user in last_msg.mentions):
+            return True
+        # user mentions other user explicitly
+        if last_msg and last_msg.mentions:
+            # se menciona outro usuário (exclui mencionar cargos/roles), permitir
+            for u in last_msg.mentions:
+                if u != self.bot.user:
+                    return True
+        # detecta perguntas / endereços diretos (palavras interrogativas ou "vc", "vc?")
+        text = last.get("content", "").lower()
+        if "?" in text or text.strip().endswith(":"):
+            # se a maioria das entradas tem o mesmo author, é provável que ele queira resposta
+            authors = {e["author_id"] for e in entries}
+            if len(authors) == 1:
+                return True
+        # se o mesmo autor enviou 2+ mensagens consecutivas em curto intervalo, e a última tem pergunta -> start
+        if len(entries) >= 2 and entries[-1]["author_id"] == entries[-2]["author_id"]:
+            if "?" in entries[-1]["content"] or any(q in entries[-1]["content"].lower() for q in ("como", "onde", "por que", "pq", "qual")):
+                return True
+        return False
+
+    def determine_target_user(self, entries: List[Dict[str, Any]]) -> Optional[int]:
+        """
+        Decide se a resposta deve mencionar alguém:
+        - Se a última mensagem menciona um usuário (exceto o bot), retorna esse id.
+        - Else, se a conversa inteira foi do mesmo autor, retorna esse autor (responder a ele).
+        - Else, None (resposta geral).
+        """
+        if not entries:
+            return None
+        last_msg_obj = entries[-1].get("message_obj")
+        if last_msg_obj and getattr(last_msg_obj, "mentions", None):
+            for u in last_msg_obj.mentions:
+                if u != self.bot.user:
+                    return getattr(u, "id", None)
+        # se a maioria das entradas for de um author só
+        authors = [e["author_id"] for e in entries]
+        if authors and len(set(authors)) == 1:
+            return authors[0]
+        return None
 
     # ----------------------
     # Helper: chamada AI (roda em thread)
@@ -440,9 +589,24 @@ class AIChatCog(commands.Cog):
             await self.end_conversation()
             return
 
+        # pega as mensagens que serão processadas e limpa buffer já
         messages_to_process = list(self.buffer)
         self.buffer.clear()
 
+        # ---------- NOVO: checagens antes de montar prompt ----------
+        # limpa recent replies expiradas
+        self._cleanup_recent_replies()
+
+        # se já foi respondido recentemente, não responda
+        if self._was_already_replied(messages_to_process):
+            return
+
+        # decidir se deve iniciar conversa automática
+        if not self.should_start_conversation(messages_to_process):
+            # não iniciar; buffer já limpo
+            return
+
+        # monta prompt (só se passou nas checagens)
         prompt = self.build_prompt(messages_to_process)
 
         try:
@@ -475,14 +639,33 @@ class AIChatCog(commands.Cog):
                 # curto delay humano se mencionado
                 await asyncio.sleep(random.uniform(0.6, 1.2))
 
-            channel = self.bot.get_channel(CHANNEL_MAIN)
+            # seleciona canal: prefira o canal da ultima mensagem se possível
+            last_msg_obj = last_entry.get("message_obj")
+            channel = None
+            if last_msg_obj and getattr(last_msg_obj, "channel", None):
+                channel = last_msg_obj.channel
+            else:
+                channel = self.bot.get_channel(CHANNEL_MAIN)
+
             if channel:
-                # menciona o autor se a conversa era direcionada a ele (ultima entrada especial)
-                last_author_id = last_entry["author_id"]
-                if last_author_id in SPECIAL_USERS:
-                    await channel.send(f"<@{last_author_id}> {send_text}")
+                # determina target (menção a usuário ou autor único)
+                target = self.determine_target_user(messages_to_process)
+
+                if target and target != getattr(self.bot.user, "id", None):
+                    await channel.send(f"<@{target}> {send_text}")
                 else:
                     await channel.send(send_text)
+
+                # registra que respondeu a essa última mensagem
+                if last_msg_obj:
+                    mid = getattr(last_msg_obj, "id", None)
+                    if mid:
+                        self.recently_replied[mid] = now_ts()
+                # marca timestamp do canal
+                try:
+                    self.last_response_ts_by_channel[channel.id] = now_ts()
+                except Exception:
+                    pass
 
         except Exception as e:
             self.recent_error = str(e)
@@ -516,6 +699,7 @@ class AIChatCog(commands.Cog):
             # registra aprendizado se for dono
             if message.author.id == OWNER_ID:
                 self.learn_from_owner(message.content)
+            # responde diretamente (menção sempre processada)
             asyncio.create_task(self.respond_to_message(message))
             return
 
@@ -570,6 +754,16 @@ class AIChatCog(commands.Cog):
             except Exception:
                 await message.channel.send(send_text)
             self.last_response_text = send_text
+
+            # registra que respondeu a essa mensagem (menção direta)
+            mid = getattr(message, "id", None)
+            if mid:
+                self.recently_replied[mid] = now_ts()
+            try:
+                self.last_response_ts_by_channel[message.channel.id] = now_ts()
+            except Exception:
+                pass
+
         except Exception as e:
             self.recent_error = str(e)
             try:
