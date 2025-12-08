@@ -307,6 +307,9 @@ class AIChatCog(commands.Cog):
         self.last_response_ts_by_channel: Dict[int, float] = {}
         self.min_gap_between_responses: float = 3.0  # segundos, ajuste
 
+        # guarda ultimo autor por canal (para heurística de "chamada sem menção")
+        self.last_author_in_channel: Dict[int, int] = {}
+
         # carregar aprendizado se existir
         self.learning = self._load_learning()
 
@@ -375,15 +378,45 @@ class AIChatCog(commands.Cog):
                 text = low.replace(b, "")
         return " ".join(text.split())
 
+    def _fix_fragmented_punctuation(self, text: str) -> str:
+        """
+        Evita frases excessivamente pontuadas como "Opa. Tô aqui. O que dá?"
+        Junta trechos muito curtos com a próxima parte usando vírgula.
+        Heurística simples, preferir frases curtas com vírgula.
+        """
+        parts = [p.strip() for p in text.split(".")]
+        if len(parts) <= 1:
+            return text
+        out = []
+        i = 0
+        while i < len(parts):
+            p = parts[i]
+            if not p:
+                i += 1
+                continue
+            # se trecho muito curto e existe próximo, combine com o próximo usando vírgula
+            if len(p) <= 3 and i + 1 < len(parts):
+                nxt = parts[i + 1].strip()
+                combined = (p + ", " + nxt).strip()
+                out.append(combined)
+                i += 2
+            else:
+                out.append(p)
+                i += 1
+        # reconstrói com ponto entre sentenças (sem criar "X. " extras)
+        return ". ".join([s for s in out if s]).strip()
+
     def final_clean(self, text: str) -> str:
         # aplica sanitizacoes em ordem
         t = text.strip()
         t = self.sanitize_giria(t)
         t = self.tone_cleanup(t)
+        t = self._fix_fragmented_punctuation(t)
         # limita tamanho (curto por padrao)
         if len(t.splitlines()) > 4 or len(t) > 900:
             # corta e finaliza com reticencias
             t = t[:900].rstrip() + "..."
+        # normaliza espaços finais
         return t.strip()
 
     # ----------------------
@@ -418,6 +451,43 @@ class AIChatCog(commands.Cog):
             return True
         return False
 
+    def is_message_addressed_to_bot(self, text: str, author_id: int, channel_last_author: Optional[int], bot_name_variants: List[str]) -> bool:
+        """
+        Detecta se a mensagem é *provavelmente* endereçada ao bot, mesmo sem @menção.
+        Usa heurísticas de linguagem natural.
+        """
+        t = (text or "").lower().strip()
+
+        # nomes alternativos / apelidos
+        for name in bot_name_variants:
+            if name in t:
+                return True
+
+        # chamado direto simples
+        direct_calls = ["oi", "opa", "eae", "fala", "hey", "ei", "psst"]
+        if any(t.startswith(call + " ") or t == call for call in direct_calls):
+            # se o autor estava falando sozinho no chat antes, muito provavelmente está chamando o bot
+            if channel_last_author == author_id:
+                return True
+
+        # frases típicas de "chamado"
+        intent_patterns = [
+            "tá aí", "ta ai", "tá la", "ta la",
+            "cadê você", "cade vc", "cadê vc",
+            "me responde", "fala comigo",
+            "preciso de você", "preciso de ajuda",
+            "consegue fazer", "faz pra mim",
+        ]
+        if any(p in t for p in intent_patterns):
+            return True
+
+        # pergunta curta + contexto isolado
+        if t.endswith("?") and len(t) <= 15:
+            # tipo "Override?", "tu?", "oi?"
+            return True
+
+        return False
+
     def should_start_conversation(self, entries: List[Dict[str, Any]]) -> bool:
         """
         Decide se o bot deve responder a esse conjunto de entradas.
@@ -431,15 +501,24 @@ class AIChatCog(commands.Cog):
             return False
         last = entries[-1]
         last_msg = last.get("message_obj")
+
+        # --- detectar referência indireta ao bot ---
+        bot_name_variants = ["override", "over", "ovr", "robô", "robo", "bot"]
+        channel_id = getattr(last_msg.channel, "id", CHANNEL_MAIN) if last_msg else CHANNEL_MAIN
+        if self.is_message_addressed_to_bot(last.get("content", ""), last["author_id"], self.last_author_in_channel.get(channel_id), bot_name_variants):
+            return True
+
         # bot mention
         if last_msg and (self.bot.user in last_msg.mentions):
             return True
+
         # user mentions other user explicitly
         if last_msg and last_msg.mentions:
             # se menciona outro usuário (exclui mencionar cargos/roles), permitir
             for u in last_msg.mentions:
                 if u != self.bot.user:
                     return True
+
         # detecta perguntas / endereços diretos (palavras interrogativas ou "vc", "vc?")
         text = last.get("content", "").lower()
         if "?" in text or text.strip().endswith(":"):
@@ -447,10 +526,12 @@ class AIChatCog(commands.Cog):
             authors = {e["author_id"] for e in entries}
             if len(authors) == 1:
                 return True
+
         # se o mesmo autor enviou 2+ mensagens consecutivas em curto intervalo, e a última tem pergunta -> start
         if len(entries) >= 2 and entries[-1]["author_id"] == entries[-2]["author_id"]:
             if "?" in entries[-1]["content"] or any(q in entries[-1]["content"].lower() for q in ("como", "onde", "por que", "pq", "qual")):
                 return True
+
         return False
 
     def determine_target_user(self, entries: List[Dict[str, Any]]) -> Optional[int]:
@@ -733,6 +814,12 @@ class AIChatCog(commands.Cog):
                 self.learn_from_owner(message.content)
             # responde diretamente (menção sempre processada)
             asyncio.create_task(self.respond_to_message(message))
+
+            # atualiza last_author_in_channel
+            try:
+                self.last_author_in_channel[message.channel.id] = message.author.id
+            except Exception:
+                pass
             return
 
         # se nao for canal principal, ignora (auto-iniciar)
@@ -751,6 +838,12 @@ class AIChatCog(commands.Cog):
         self.last_message_time = now
         if not self.active:
             self.active = True
+
+        # atualiza last_author_in_channel (importante para heurística)
+        try:
+            self.last_author_in_channel[message.channel.id] = message.author.id
+        except Exception:
+            pass
 
         # cria entry e agrupa se necessario
         entry = self._make_entry(message)
@@ -796,6 +889,12 @@ class AIChatCog(commands.Cog):
             except Exception:
                 pass
 
+            # atualiza last_author_in_channel
+            try:
+                self.last_author_in_channel[message.channel.id] = message.author.id
+            except Exception:
+                pass
+
         except Exception as e:
             self.recent_error = str(e)
             try:
@@ -836,6 +935,7 @@ class AIChatCog(commands.Cog):
         emb.add_field(name="Ultima resposta (resumo)", value=(self.last_response_text[:400] + "...") if self.last_response_text else "—")
         emb.add_field(name="Erro recente", value=(self.recent_error or "Nenhum"))
         emb.add_field(name="Aprendizado (entradas)", value=str(len(self.learning)))
+        emb.add_field(name="Recently replied (cache size)", value=str(len(self.recently_replied)))
         await ctx.reply(embed=emb, ephemeral=True)
 
     # ----------------------
