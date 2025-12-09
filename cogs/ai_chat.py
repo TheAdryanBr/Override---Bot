@@ -518,19 +518,43 @@ class AIChatCog(commands.Cog):
         }
 
     def _merge_into_last(self, entry: Dict[str, Any]) -> None:
-        """Se ultima entrada for do mesmo author e recem, concatena o conteúdo."""
-        if not self.buffer:
-            self.buffer.append(entry)
-            return
-        last = self.buffer[-1]
-        if last["author_id"] == entry["author_id"] and (entry["ts"] - last["ts"]) < self.context_expire:
-            # junta na ultima entrada (com espaço)
-            last["content"] = f"{last['content']} {entry['content']}"
-            last["ts"] = entry["ts"]
-            # keep last message_obj as newest for reply mentions
-            last["message_obj"] = entry["message_obj"]
-        else:
-            self.buffer.append(entry)
+    """Agrupa mensagens APENAS quando são claramente continuação do mesmo pensamento."""
+
+    if not self.buffer:
+        self.buffer.append(entry)
+        return
+
+    last = self.buffer[-1]
+
+    # --- REGRAS PARA NÃO AGRUPAR ---
+    # 1. Se qualquer uma das mensagens tem @menção → NÃO agrupar
+    if last.get("message_obj") and last["message_obj"].mentions:
+        self.buffer.append(entry)
+        return
+    if entry.get("message_obj") and entry["message_obj"].mentions:
+        self.buffer.append(entry)
+        return
+
+    # 2. Se a nova mensagem começa chamando alguém → NÃO agrupar
+    vocativos = ["override", "over", "ovr", "tu", "você", "vc", "ei", "hey", "opa", "eae", "fala", "mano", "brunin"]
+    if entry["content"].lower().split(" ")[0] in vocativos:
+        self.buffer.append(entry)
+        return
+
+    # 3. Se passou do tempo limite → NÃO agrupar
+    if (entry["ts"] - last["ts"]) > self.context_expire:
+        self.buffer.append(entry)
+        return
+
+    # 4. Se autor mudou → NÃO agrupar
+    if last["author_id"] != entry["author_id"]:
+        self.buffer.append(entry)
+        return
+
+    # --- AGRUPAMENTO SEGURO (continuação lógica)
+    last["content"] = f"{last['content']} {entry['content']}"
+    last["ts"] = entry["ts"]
+    last["message_obj"] = entry["message_obj"]
 
     # ----------------------
     # Detecção de intenção (heurística leve)
