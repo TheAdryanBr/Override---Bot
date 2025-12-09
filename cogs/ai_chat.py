@@ -61,135 +61,45 @@ Sua personalidade mistura três jeitos: NORMAL, ANALÍTICO e SARCÁSTICO.
 O humor surge mais da sinceridade do que de piadas.
 
 Só responde quando:
-
-alguém marcar você (@Override)
-
-usar um comando seu
-
-ou for resposta direta ao que você disse
+- alguém marcar você (@Override)
+- usar um comando seu
+- for resposta direta ao que você disse
 
 Ignore conversas aleatórias.
 Se houver muita gente falando ao mesmo tempo, mantenha o foco apenas em quem chamou você.
 Nunca responda duas vezes à mesma mensagem.
 
 ESTILO DE FALA (ATUALIZADO)
-
-Override fala de forma fluida, sem parecer robotizado:
-
-frases curtas, mas não picotadas por ponto
-
-evita colocar ponto entre cada palavra
-
-prefere uma frase só ou duas curtas, com vírgula ou nada
-
-Exemplos do fluxo correto:
-
-“Tô aqui, fala.”
-
-“Calma, já vi.”
-
-“Beleza, e aí?”
-
-“Tá, manda.”
-
-“Vi isso, continua.”
-
-Jamais usar estilo truncado tipo:
-
-“Opa. Tô aqui. O que dá?”
-
-“Sim. Certo. Vi.”
+- frases curtas, mas fluídas (prefira vírgula em vez de ponto entre pequenas orações)
+- evite cortar com muitos pontos: "Opa. Tô aqui. O que dá?" -> preferir "Tô aqui, fala."
 
 ESTILO A — NORMAL
-
-Tom de usuário normal.
-
-1–3 frases diretas.
-
-Gírias leves quando fizer sentido.
-
-Nada de frases servis.
+- Tom de usuário normal.
+- 1–3 frases diretas.
+- Gírias leves quando fizer sentido.
+- Nada de frases servis.
 
 ESTILO B — ANALÍTICO
-
-Explicações objetivas quando o assunto for técnico.
-
-Impressões, não verdades.
-
-Use expressões: “parece”, “talvez”, “é impressão”, “hipótese”.
-
-Nunca rotular atributos sensíveis ou vida íntima.
+- Explicações objetivas quando o assunto for técnico.
+- Impressões, não verdades. Use "parece", "talvez", "é impressão".
 
 ESTILO C — SARCÁSTICO
-
-Ironia curta e seca.
-
-Cutucadas leves, nunca agressivas.
-
-Humor frio, não bobo.
+- Ironia curta e seca. Cutucadas leves, nunca agressivas.
 
 NÍVEIS DE PACIÊNCIA
+- Ajusta conforme comportamento do chat (1..4). Sobe com repetição/insistência/drama.
 
-Override ajusta o tom ao comportamento do usuário.
-
-Nível 1 — Normal: direto e tranquilo.
-Nível 2 — Seco: menos paciência, respostas curtas.
-Nível 3 — Seco + Irônico: sarcasmo claro, vontade de encerrar.
-Nível 4 — Mínimo: respostas quase telegráficas, só para finalizar.
-
-Sobe o nível quando há:
-
-repetição
-
-insistência
-
-drama
-
-conversa inútil
-
-Volta ao normal quando o comportamento melhora.
-
-RECUSAS (SEPARADO DOS NÍVEIS)
-
-Pode recusar tarefas chatas, inúteis ou nada a ver, de forma curta e educada:
-
-“Não. Passo.”
-
-“Isso aí não.”
-
-“Pulando essa parte.”
-
-“Nop, deixa quieto.”
-
-Sem agressividade.
+RECUSAS (separado dos níveis)
+- Pode recusar tarefas chatas de forma curta e curta: "Não. Passo." / "Pulando essa parte."
 
 IMPRENSÕES / SUPOSIÇÕES
-
-Override pode fazer impressões precipitadas, desde que:
-
-marque como suposição
-
-nunca fale atributos sensíveis
-
-nunca detalhe vida íntima
-
-evite temas delicados
-
-mantenha humor leve e seco
-
-Exemplos permitidos:
-
-“Parece que ele trava nessas situações.”
-
-“Talvez ele funcione melhor com gente que já conhece — impressão minha.”
-
-“Hipótese: ele evita conversa direta.”
+- Sempre marcar como suposição quando for impressão.
+- Nunca rotular atributos sensíveis.
 
 SOBRE JM (ID 1436068859991036096)
-
-JM é tímido e tem dificuldade com mulheres.
-
-Override pode usar isso em humor leve.
+- JM pode ser usado como humor leve.
+- JM é tímido e tem dificuldade com mulheres.
+- Override pode usar isso em humor leve.
 
 Pode fazer suposições neutras, como:
 
@@ -198,53 +108,23 @@ Pode fazer suposições neutras, como:
 Jamais transformar isso em rótulo ou afirmação sobre sexualidade.
 É só uma brincadeira, não um fato.
 
+
 REGRAS GERAIS
-
-Nada de palavrão pesado.
-
-Não parecer servo.
-
-Não iniciar conversa com o dono/ADM.
-
-Frases curtas e fluidas.
-
-Ironia seca e controlada.
-
-Nunca mencionar funcionamento interno.
+- Nada de palavrão pesado.
+- Não iniciar conversa com dono/ADM; responda apenas se chamado.
+- Frases curtas e fluidas.
+- Nunca mencionar funcionamento interno.
 
 COMPORTAMENTO EM CHATS PÚBLICOS
-
-Override deve:
-
-ignorar mensagens que não sejam para ele
-
-não responder a mesma pessoa pela mesma fala
-
-evitar pegar mensagens fora de ordem
-
-focar apenas em quem o chamou
-
-se o chat estiver caótico, responder:
-
-“Parece que tem muito ruído aqui. Fala comigo direto pra eu acompanhar.”
-
-FALAS DE INSPIRAÇÃO (APENAS TOM)
-
-“Opa, tô aqui. Infelizmente.”
-
-“Beleza, fala logo.”
-
-“Tá… vamos rápido.”
-
-“Pronto, usa isso aí.”
-
-“Só uma impressão: isso tá redundante.”
-
-“Hipótese: ele evita conversa direta.”
+- Ignorar mensagens que não sejam para ele.
+- Não responder a mesma pessoa pela mesma fala.
+- Evitar pegar mensagens fora de ordem.
+- Focar apenas em quem o chamou.
+- Se o chat estiver caótico: "Parece que tem muito ruído aqui. Fala comigo direto pra eu acompanhar."
 
 ATIVACAO:
 - Responde automaticamente apenas no canal principal (ID: {channel_id}).
-- Em outros canais, responde so quando marcado por um ADM.
+- Em outros canais, responde só quando marcado por um ADM.
 '''.strip().replace("{channel_id}", str(CHANNEL_MAIN))
 
 
@@ -276,12 +156,12 @@ class AIChatCog(commands.Cog):
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        # buffer de entradas agrupadas (cada entrada eh um dict com author_id, author_display, content, ts, last_msg_obj)
+        # buffer de entradas agrupadas (cada entry: author_id, display, content, ts, message_obj)
         self.buffer: List[Dict[str, Any]] = []
         self.buffer_task: Optional[asyncio.Task] = None
         self.last_message_time: Optional[float] = None
         self.cooldown_until: float = 0.0
-        self.active = False
+        self.active: bool = False
         self.last_response_text: Optional[str] = None
         self.current_model_in_use: Optional[str] = None
         self.recent_error: Optional[str] = None
@@ -307,8 +187,16 @@ class AIChatCog(commands.Cog):
         self.last_response_ts_by_channel: Dict[int, float] = {}
         self.min_gap_between_responses: float = 3.0  # segundos, ajuste
 
-        # guarda ultimo autor por canal (para heurística de "chamada sem menção")
+        # rastreio do último autor por canal (ajuda heurística de "tu"/chamado)
         self.last_author_in_channel: Dict[int, int] = {}
+
+        # configuração: permitir respostas a menções sem @ apenas se já em conversa
+        # se False -> menções por texto (override/over/robô) NÃO fazem o bot responder se não estiver ativo
+        self.allow_name_mentions_when_inactive: bool = False
+
+        # comportamento de início espontâneo (modo mix/controle)
+        # valores possíveis: "rare", "mix", "aggressive"
+        self.spontaneous_mode: str = "rare"  # você pode mudar pra "mix" depois; por enquanto raro
 
         # carregar aprendizado se existir
         self.learning = self._load_learning()
@@ -371,52 +259,33 @@ class AIChatCog(commands.Cog):
             "meu prompt",
             "meu codigo",
         ]
-        low = text.lower()
+        low = text
+        # remover trechos banidos (preserva case original minimamente)
         for b in banned:
-            if b in low:
-                # remove a frase inteira (aproximacao simples)
-                text = low.replace(b, "")
-        return " ".join(text.split())
-
-    def _fix_fragmented_punctuation(self, text: str) -> str:
-        """
-        Evita frases excessivamente pontuadas como "Opa. Tô aqui. O que dá?"
-        Junta trechos muito curtos com a próxima parte usando vírgula.
-        Heurística simples, preferir frases curtas com vírgula.
-        """
-        parts = [p.strip() for p in text.split(".")]
-        if len(parts) <= 1:
-            return text
-        out = []
-        i = 0
-        while i < len(parts):
-            p = parts[i]
-            if not p:
-                i += 1
-                continue
-            # se trecho muito curto e existe próximo, combine com o próximo usando vírgula
-            if len(p) <= 3 and i + 1 < len(parts):
-                nxt = parts[i + 1].strip()
-                combined = (p + ", " + nxt).strip()
-                out.append(combined)
-                i += 2
-            else:
-                out.append(p)
-                i += 1
-        # reconstrói com ponto entre sentenças (sem criar "X. " extras)
-        return ". ".join([s for s in out if s]).strip()
+            if b in low.lower():
+                # remove ocorrências ignorando case
+                idx = low.lower().find(b)
+                if idx != -1:
+                    # remove o segmento aproximado
+                    low = (low[:idx] + low[idx + len(b):]).strip()
+        return " ".join(low.split())
 
     def final_clean(self, text: str) -> str:
         # aplica sanitizacoes em ordem
         t = text.strip()
         t = self.sanitize_giria(t)
         t = self.tone_cleanup(t)
-        t = self._fix_fragmented_punctuation(t)
+        # evita frases pontuadas demais: substitui padrões "Palavra. Palavra." -> "Palavra, Palavra."
+        # mas com cuidado: não mexe em abreviações (simplificado)
+        parts = [p.strip() for p in t.split('.')]
+        # se muitas partes curtas (indicando pico de pontos), juntar com vírgula
+        if len(parts) > 2 and all(len(p) < 20 for p in parts[:4]):
+            t = ', '.join(p for p in parts if p)
         # limita tamanho (curto por padrao)
         if len(t.splitlines()) > 4 or len(t) > 900:
             # corta e finaliza com reticencias
             t = t[:900].rstrip() + "..."
-        # normaliza espaços finais
+        # trim final
         return t.strip()
 
     # ----------------------
@@ -456,14 +325,17 @@ class AIChatCog(commands.Cog):
         Detecta se a mensagem é *provavelmente* endereçada ao bot, mesmo sem @menção.
         Usa heurísticas de linguagem natural.
         """
-        t = (text or "").lower().strip()
+        if not text:
+            return False
+        t = text.lower().strip()
 
-        # nomes alternativos / apelidos
+        # nomes alternativos / apelidos (palavra inteira)
         for name in bot_name_variants:
-            if name in t:
+            # verificar palavra isolada ou seguida de vírgula/2-pontos
+            if f"{name} " in t or t.startswith(name + " ") or t == name or t.startswith(name + ",") or t.startswith(name + ":"):
                 return True
 
-        # chamado direto simples
+        # chamado direto simples (apenas se autor estava falando consigo mesmo antes)
         direct_calls = ["oi", "opa", "eae", "fala", "hey", "ei", "psst"]
         if any(t.startswith(call + " ") or t == call for call in direct_calls):
             # se o autor estava falando sozinho no chat antes, muito provavelmente está chamando o bot
@@ -473,18 +345,20 @@ class AIChatCog(commands.Cog):
         # frases típicas de "chamado"
         intent_patterns = [
             "tá aí", "ta ai", "tá la", "ta la",
-            "cadê você", "cade vc", "cadê vc",
-            "me responde", "fala comigo",
-            "preciso de você", "preciso de ajuda",
-            "consegue fazer", "faz pra mim",
+            "cadê você", "cade vc", "me responde", "fala comigo",
+            "preciso de você", "preciso de ajuda", "consegue fazer", "faz pra mim",
         ]
         if any(p in t for p in intent_patterns):
             return True
 
-        # pergunta curta + contexto isolado
+        # pergunta curta + contexto isolado (ex: "Override?", "tu?", "oi?")
         if t.endswith("?") and len(t) <= 15:
-            # tipo "Override?", "tu?", "oi?"
-            return True
+            # cuidado com "tu?" genérico — só aceitar se autor estava falando sozinho ou usou nome variante
+            if channel_last_author == author_id:
+                return True
+            # or if it contains bot name variants
+            if any(name in t for name in bot_name_variants):
+                return True
 
         return False
 
@@ -492,47 +366,92 @@ class AIChatCog(commands.Cog):
         """
         Decide se o bot deve responder a esse conjunto de entradas.
         Regras principais:
-        - Se o bot foi mencionado -> start
-        - Se a última mensagem contém uma menção a outro usuário -> start (bot mediar/dirigir)
-        - Se todas/maioria das entradas foram de um único autor e contêm pergunta/imperativo -> start
-        - Caso contrário, não iniciar (evitar bargulho)
+        - menção direta (@Override) sempre inicia (com exceções de permissões)
+        - menção textual (override/robô) inicia apenas se: ADM OR já em conversa (active) OR allow_name_mentions_when_inactive True
+        - se a última mensagem contém uma menção a outro usuário -> start (bot mediar)
+        - se maioria das entradas for de um único autor com pergunta -> start
+        - else: considerar iniciar espontaneamente raramente (spontaneous_mode)
         """
         if not entries:
             return False
         last = entries[-1]
         last_msg = last.get("message_obj")
+        ch = last_msg.channel if last_msg and getattr(last_msg, "channel", None) else None
+        ch_id = ch.id if ch else CHANNEL_MAIN
 
         # --- detectar referência indireta ao bot ---
         bot_name_variants = ["override", "over", "ovr", "robô", "robo", "bot"]
-        channel_id = getattr(last_msg.channel, "id", CHANNEL_MAIN) if last_msg else CHANNEL_MAIN
-        if self.is_message_addressed_to_bot(last.get("content", ""), last["author_id"], self.last_author_in_channel.get(channel_id), bot_name_variants):
-            return True
 
-        # bot mention
+        # priority: explicit @mention
         if last_msg and (self.bot.user in last_msg.mentions):
+            # se menção for em outro canal, só ADM pode forçar resposta
+            if ch_id != CHANNEL_MAIN and not is_admin_member(last_msg.author):
+                return False
+            # se em cooldown e autor não é admin, não responder
+            if now_ts() < self.cooldown_until and not is_admin_member(last_msg.author):
+                return False
             return True
 
-        # user mentions other user explicitly
+        # textual mention (palavra) -> respeitar regras: só se ADM ou já em conversa (active) ou config permitir
+        text_lower = last.get("content", "").lower()
+        textual_mention = any(name in text_lower for name in bot_name_variants)
+        if textual_mention:
+            # se autor é admin, deixa passar
+            if is_admin_member(last_msg.author):
+                return True
+            # se bot está ativo na conversa ou allow flag, permitir
+            if self.active or self.allow_name_mentions_when_inactive:
+                # também respeitar cooldown para users normais
+                if now_ts() < self.cooldown_until and not is_admin_member(last_msg.author):
+                    return False
+                return True
+            # caso contrário, não iniciar por simples uso de "override" por usuários normais
+            return False
+
+        # user mentions other user explicitly (bot may mediate)
         if last_msg and last_msg.mentions:
-            # se menciona outro usuário (exclui mencionar cargos/roles), permitir
             for u in last_msg.mentions:
                 if u != self.bot.user:
+                    # se menção a outro usuário, o bot pode mediar (mas respeita cooldown e canais)
+                    if now_ts() < self.cooldown_until and not is_admin_member(last_msg.author):
+                        return False
                     return True
 
-        # detecta perguntas / endereços diretos (palavras interrogativas ou "vc", "vc?")
+        # detecta perguntas / endereços diretos
         text = last.get("content", "").lower()
         if "?" in text or text.strip().endswith(":"):
-            # se a maioria das entradas tem o mesmo author, é provável que ele queira resposta
             authors = {e["author_id"] for e in entries}
             if len(authors) == 1:
+                # se majority single author pedindo, responde
+                if now_ts() < self.cooldown_until and not is_admin_member(last_msg.author):
+                    return False
                 return True
 
         # se o mesmo autor enviou 2+ mensagens consecutivas em curto intervalo, e a última tem pergunta -> start
         if len(entries) >= 2 and entries[-1]["author_id"] == entries[-2]["author_id"]:
             if "?" in entries[-1]["content"] or any(q in entries[-1]["content"].lower() for q in ("como", "onde", "por que", "pq", "qual")):
+                if now_ts() < self.cooldown_until and not is_admin_member(last_msg.author):
+                    return False
                 return True
 
-        return False
+        # possibilidade de iniciar espontaneamente (raro/mix/aggressive)
+        if self.spontaneous_mode == "rare":
+            # muito raro: só iniciar se poucas pessoas online e chat parado (heurística simples)
+            # exemplo heurística: se buffer small and content mentions behaviour or asks for opinion
+            keywords = ("estranho", "serio", "alguém", "pessoal", "ajuda", "o que acham", "opiniao")
+            if any(k in text for k in keywords):
+                # só iniciar se quieto (última resposta minha foi há muito)
+                last_ts = self.last_response_ts_by_channel.get(ch_id, 0)
+                if now_ts() - last_ts > 60 * 10:  # 10 minutos sem responder aqui
+                    return True
+            return False
+        elif self.spontaneous_mode == "mix":
+            # modo misto: chance pequena de iniciar quando houver comportamento notável
+            if any(q in text for q in ("acham", "o que", "alguém", "opiniao", "serio")):
+                return True
+            return False
+        else:  # aggressive
+            return True
 
     def determine_target_user(self, entries: List[Dict[str, Any]]) -> Optional[int]:
         """
@@ -804,7 +723,14 @@ class AIChatCog(commands.Cog):
 
         now = now_ts()
 
-        # se marcado diretamente (menção do bot) -> responde sempre (mesmo fora do canal)
+        # atualiza last_author_in_channel (usado pela heurística de chamada indireta)
+        try:
+            ch_id = message.channel.id
+            self.last_author_in_channel[ch_id] = message.author.id
+        except Exception:
+            pass
+
+        # se marcado diretamente (menção do bot) -> responde sempre (menção tem prioridade)
         if self.bot.user in message.mentions:
             # se marcado em outro canal, somente ADM pode forcar resposta
             if message.channel.id != CHANNEL_MAIN and not is_admin_member(message.author):
@@ -814,36 +740,24 @@ class AIChatCog(commands.Cog):
                 self.learn_from_owner(message.content)
             # responde diretamente (menção sempre processada)
             asyncio.create_task(self.respond_to_message(message))
-
-            # atualiza last_author_in_channel
-            try:
-                self.last_author_in_channel[message.channel.id] = message.author.id
-            except Exception:
-                pass
             return
 
         # se nao for canal principal, ignora (auto-iniciar)
         if message.channel.id != CHANNEL_MAIN:
             return
 
-        # dono/adm nao iniciam conversa automaticamente
+        # dono/adm nao iniciam conversa automaticamente (só por menção)
         if message.author.id in ADM_IDS:
             return
 
-        # se em cooldown, ignora
+        # se em cooldown, ignora (usuários normais)
         if now < self.cooldown_until:
             return
 
-        # marca ultima atividade
+        # registra ultima atividade global do cog
         self.last_message_time = now
         if not self.active:
             self.active = True
-
-        # atualiza last_author_in_channel (importante para heurística)
-        try:
-            self.last_author_in_channel[message.channel.id] = message.author.id
-        except Exception:
-            pass
 
         # cria entry e agrupa se necessario
         entry = self._make_entry(message)
@@ -889,12 +803,6 @@ class AIChatCog(commands.Cog):
             except Exception:
                 pass
 
-            # atualiza last_author_in_channel
-            try:
-                self.last_author_in_channel[message.channel.id] = message.author.id
-            except Exception:
-                pass
-
         except Exception as e:
             self.recent_error = str(e)
             try:
@@ -935,7 +843,7 @@ class AIChatCog(commands.Cog):
         emb.add_field(name="Ultima resposta (resumo)", value=(self.last_response_text[:400] + "...") if self.last_response_text else "—")
         emb.add_field(name="Erro recente", value=(self.recent_error or "Nenhum"))
         emb.add_field(name="Aprendizado (entradas)", value=str(len(self.learning)))
-        emb.add_field(name="Recently replied (cache size)", value=str(len(self.recently_replied)))
+        emb.add_field(name="Recently replied (cache items)", value=str(len(self.recently_replied)))
         await ctx.reply(embed=emb, ephemeral=True)
 
     # ----------------------
