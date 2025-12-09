@@ -13,7 +13,9 @@ CANAL_FIXO_CONFIG = {
     1216123178548465755: {"categoria_id": 1216123032138154008, "prefixo_nome": "👥│Duo│"},
     1216123306579595274: {"categoria_id": 1216123032138154008, "prefixo_nome": "👥│Trio│"},
     1216123421688205322: {"categoria_id": 1216123032138154008, "prefixo_nome": "👥│Team│"},
-    1213533210907246592: {"categoria_id": 1213532914520690739, "prefixo_nome": "🎧│Sala│"},
+    1447746270704832553: {"categoria_id": 1213532914520690739, "prefixo_nome": "👥│Dupla│"},
+    1447746270704832553: {"categoria_id": 1447746256314044426, "prefixo_nome": "👥│Trio│"},
+    1447746270704832553: {"categoria_id": 1447746236697280733, "prefixo_nome": "👥│Squad│"},
 }
 
 class VoiceRoomsCog(commands.Cog):
