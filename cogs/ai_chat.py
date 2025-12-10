@@ -454,6 +454,9 @@ class AIChatCog(commands.Cog):
             channel_last_author = self.last_author_in_channel.get(last_msg.channel.id)
 
         if self.is_message_addressed_to_bot(last.get("content", ""), last["author_id"], channel_last_author, bot_name_variants):
+            # se estiver em cooldown e autor não for admin -> não inicia
+            if now_ts() < self.cooldown_until and last["author_id"] not in ADM_IDS:
+                return False
             # se for uma chamada indireta vinda de usuário não-ADM e o bot não estiver em 'active' -> ignore
             if last["author_id"] not in ADM_IDS and not self.active:
                 return False
@@ -468,12 +471,6 @@ class AIChatCog(commands.Cog):
             if last["author_id"] not in ADM_IDS and not self.active:
                 return False
             return True
-
-        # user mentions other user explicitly (bot may mediate)
-        if last_msg and last_msg.mentions:
-            for u in last_msg.mentions:
-                if u != self.bot.user:
-                    return True
 
         # detecta perguntas / endereços diretos (palavras interrogativas ou "vc", "vc?")
         text = last.get("content", "").lower()
