@@ -518,47 +518,57 @@ class AIChatCog(commands.Cog):
         }
 
     def _merge_into_last(self, entry: Dict[str, Any]) -> None:
-        """Agrupa mensagens APENAS quando são claramente continuação do mesmo pensamento."""
+        """Agrupa mensagens APENAS quando são continuação lógica do mesmo pensamento."""
 
+        # Se buffer vazio → adicionar direto
         if not self.buffer:
             self.buffer.append(entry)
             return
 
         last = self.buffer[-1]
 
-        # 1. Se qualquer uma das mensagens tem @menção → NÃO agrupar
-        if getattr(last.get("message_obj"), "mentions", None):
+        # -------------------------------
+        # 1) Se qualquer mensagem tiver menção → NÃO agrupa
+        # -------------------------------
+        if last.get("message_obj") and last["message_obj"].mentions:
             self.buffer.append(entry)
             return
 
-        if getattr(entry.get("message_obj"), "mentions", None):
+        if entry.get("message_obj") and entry["message_obj"].mentions:
             self.buffer.append(entry)
             return
 
-        # 2. Vocativos que impedem agrupamento
+        # -------------------------------
+        # 2) Se nova mensagem começar chamando alguém → NÃO agrupa
+        # -------------------------------
         vocativos = [
-            "override", "over", "ovr",
-            "tu", "você", "vc",
-            "ei", "hey", "opa", "eae",
-            "fala", "mano", "brunin"
+            "override", "over", "ovr", "tu", "você", "vc", "ei", "hey",
+            "opa", "eae", "fala", "mano", "brunin"
         ]
 
         first_word = entry["content"].lower().split(" ")[0]
+
         if first_word in vocativos:
             self.buffer.append(entry)
             return
 
-        # 3. timeout
+        # -------------------------------
+        # 3) Se passou tempo demais → NÃO agrupa
+        # -------------------------------
         if (entry["ts"] - last["ts"]) > self.context_expire:
             self.buffer.append(entry)
             return
 
-        # 4. autores diferentes
+        # -------------------------------
+        # 4) Se autor mudou → NÃO agrupa
+        # -------------------------------
         if last["author_id"] != entry["author_id"]:
             self.buffer.append(entry)
             return
 
-        # --- AGRUPAMENTO ---
+        # -------------------------------
+        # AGRUPAMENTO SEGURO
+        # -------------------------------
         last["content"] = f"{last['content']} {entry['content']}"
         last["ts"] = entry["ts"]
         last["message_obj"] = entry["message_obj"]
