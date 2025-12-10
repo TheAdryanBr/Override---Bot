@@ -90,7 +90,6 @@ COGS = [
     "cogs.freestuff_monitor",
     "cogs.controle_owner",
     "cogs.autorole",
-    "cogs.ai_chat",
 ]
 
 # ===== EVENTO DE SYNC =====
