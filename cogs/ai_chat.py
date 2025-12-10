@@ -518,57 +518,50 @@ class AIChatCog(commands.Cog):
         }
 
     def _merge_into_last(self, entry: Dict[str, Any]) -> None:
-    """Agrupa mensagens APENAS quando são claramente continuação do mesmo pensamento."""
+        """Agrupa mensagens APENAS quando são claramente continuação do mesmo pensamento."""
 
-    if not self.buffer:
-        self.buffer.append(entry)
-        return
-
-    last = self.buffer[-1]
-
-    # --- REGRAS PARA NÃO AGRUPAR ---
-
-    # 1. Se qualquer uma das mensagens tem @menção → NÃO agrupar
-    try:
-        if last.get("message_obj") and last["message_obj"].mentions:
+        if not self.buffer:
             self.buffer.append(entry)
             return
-    except:
-        pass
 
-    try:
-        if entry.get("message_obj") and entry["message_obj"].mentions:
+        last = self.buffer[-1]
+
+        # 1. Se qualquer uma das mensagens tem @menção → NÃO agrupar
+        if getattr(last.get("message_obj"), "mentions", None):
             self.buffer.append(entry)
             return
-    except:
-        pass
 
-    # 2. Se a nova mensagem começa como vocativo → NÃO agrupar
-    vocativos = [
-        "override", "over", "ovr",
-        "tu", "você", "vc",
-        "ei", "hey", "opa", "eae",
-        "fala", "mano", "brunin"
-    ]
-    first_word = entry["content"].lower().split(" ")[0]
-    if first_word in vocativos:
-        self.buffer.append(entry)
-        return
+        if getattr(entry.get("message_obj"), "mentions", None):
+            self.buffer.append(entry)
+            return
 
-    # 3. Se passou do tempo limite → NÃO agrupar
-    if (entry["ts"] - last["ts"]) > self.context_expire:
-        self.buffer.append(entry)
-        return
+        # 2. Vocativos que impedem agrupamento
+        vocativos = [
+            "override", "over", "ovr",
+            "tu", "você", "vc",
+            "ei", "hey", "opa", "eae",
+            "fala", "mano", "brunin"
+        ]
 
-    # 4. Se autor mudou → NÃO agrupar
-    if last["author_id"] != entry["author_id"]:
-        self.buffer.append(entry)
-        return
+        first_word = entry["content"].lower().split(" ")[0]
+        if first_word in vocativos:
+            self.buffer.append(entry)
+            return
 
-    # --- AGRUPAMENTO SEGURO (continuação real)
-    last["content"] = f"{last['content']} {entry['content']}"
-    last["ts"] = entry["ts"]
-    last["message_obj"] = entry["message_obj"]
+        # 3. timeout
+        if (entry["ts"] - last["ts"]) > self.context_expire:
+            self.buffer.append(entry)
+            return
+
+        # 4. autores diferentes
+        if last["author_id"] != entry["author_id"]:
+            self.buffer.append(entry)
+            return
+
+        # --- AGRUPAMENTO ---
+        last["content"] = f"{last['content']} {entry['content']}"
+        last["ts"] = entry["ts"]
+        last["message_obj"] = entry["message_obj"]
 
     # ----------------------
     # Detecção de intenção (heurística leve)
