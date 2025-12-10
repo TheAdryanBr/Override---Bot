@@ -527,17 +527,31 @@ class AIChatCog(commands.Cog):
     last = self.buffer[-1]
 
     # --- REGRAS PARA NÃO AGRUPAR ---
-    # 1. Se qualquer uma das mensagens tem @menção → NÃO agrupar
-    if last.get("message_obj") and last["message_obj"].mentions:
-        self.buffer.append(entry)
-        return
-    if entry.get("message_obj") and entry["message_obj"].mentions:
-        self.buffer.append(entry)
-        return
 
-    # 2. Se a nova mensagem começa chamando alguém → NÃO agrupar
-    vocativos = ["override", "over", "ovr", "tu", "você", "vc", "ei", "hey", "opa", "eae", "fala", "mano", "brunin"]
-    if entry["content"].lower().split(" ")[0] in vocativos:
+    # 1. Se qualquer uma das mensagens tem @menção → NÃO agrupar
+    try:
+        if last.get("message_obj") and last["message_obj"].mentions:
+            self.buffer.append(entry)
+            return
+    except:
+        pass
+
+    try:
+        if entry.get("message_obj") and entry["message_obj"].mentions:
+            self.buffer.append(entry)
+            return
+    except:
+        pass
+
+    # 2. Se a nova mensagem começa como vocativo → NÃO agrupar
+    vocativos = [
+        "override", "over", "ovr",
+        "tu", "você", "vc",
+        "ei", "hey", "opa", "eae",
+        "fala", "mano", "brunin"
+    ]
+    first_word = entry["content"].lower().split(" ")[0]
+    if first_word in vocativos:
         self.buffer.append(entry)
         return
 
@@ -551,7 +565,7 @@ class AIChatCog(commands.Cog):
         self.buffer.append(entry)
         return
 
-    # --- AGRUPAMENTO SEGURO (continuação lógica)
+    # --- AGRUPAMENTO SEGURO (continuação real)
     last["content"] = f"{last['content']} {entry['content']}"
     last["ts"] = entry["ts"]
     last["message_obj"] = entry["message_obj"]
