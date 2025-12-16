@@ -29,27 +29,20 @@ class AIChatCog(commands.Cog):
 
     async def process_buffer(self):
     """Processa mensagens do buffer respeitando estado mental e fluxo da conversa."""
-
     if not self.buffer:
         return
 
-    # Se a conversa foi encerrada externamente
     if not self.active:
         self.buffer.clear()
         return
 
-    # Copia o buffer e limpa imediatamente
     entries = list(self.buffer)
     self.buffer.clear()
 
-    # Recupera o último estado mental avaliado
     state = getattr(self, "last_state", None)
-
-    # Segurança: se não houver estado, não responde
     if not state or not state.should_respond:
         return
 
-    # Monta o prompt com contexto + estado mental
     prompt = self.build_prompt(entries, state)
 
     try:
@@ -60,7 +53,6 @@ class AIChatCog(commands.Cog):
         print(f"[AIChat] Erro ao chamar IA: {e}")
         return
 
-    # Delay humano baseado em paciência
     delay = random.uniform(
         0.8 * state.patience_level,
         1.6 * state.patience_level
@@ -70,11 +62,10 @@ class AIChatCog(commands.Cog):
     await self.send_response(response)
 
     async def send_response(self, response: str):
-        """Envia a resposta ao canal de acordo com o fluxo."""
-        channel = self.bot.get_channel(CHANNEL_MAIN)
-        if channel:
-            await channel.send(response)
-            self.last_response_text = response
+    channel = self.bot.get_channel(CHANNEL_MAIN)
+    if channel:
+        await channel.send(response)
+        self.last_response_text = response
 
     def should_end_conversation(self) -> bool:
         """Determina se a conversa deve ser encerrada por inatividade."""
@@ -98,14 +89,12 @@ class AIChatCog(commands.Cog):
         f"{e['author_display']}: {e['content']}" for e in entries
     )
 
-    # 🎭 Tom da resposta
     tone_instruction = {
         "normal": "Responda de forma natural e fluida.",
         "seco": "Seja direto, curto e sem enrolação.",
         "sarcastico": "Use ironia leve, respostas secas e humor frio."
     }.get(state.tone, "Responda de forma natural.")
 
-    # ⏳ Nível de paciência
     patience_instruction = {
         1: "Explique normalmente.",
         2: "Seja mais objetivo.",
@@ -113,7 +102,7 @@ class AIChatCog(commands.Cog):
         4: "Responda o mínimo possível para encerrar."
     }.get(state.patience_level, "")
 
-    prompt = (
+    return (
         f"{tone_instruction}\n"
         f"{patience_instruction}\n\n"
         f"Conversa:\n{texto_chat}\n\n"
@@ -124,25 +113,22 @@ class AIChatCog(commands.Cog):
 
     @commands.Cog.listener()
 async def on_message(self, message: discord.Message):
-    # Ignora bots
     if message.author.bot:
         return
 
-    # Só atua no canal principal
     if message.channel.id != CHANNEL_MAIN:
         return
 
-    # 🧠 Avalia estado mental / permissões
-    
+    # 🧠 Avalia estado mental
+    state = self.state_manager.evaluate(message, self.bot.user)
+    self.last_state = state  # ← MUITO IMPORTANTE
 
     if not state.should_respond:
         return
 
-    # Marca conversa como ativa
     if not self.active:
         self.active = True
 
-    # Cria entrada para o buffer
     entry = {
         "author_id": message.author.id,
         "author_display": message.author.display_name,
@@ -152,10 +138,8 @@ async def on_message(self, message: discord.Message):
 
     self.buffer.append(entry)
 
-    # Inicia processamento se não houver task rodando
     if not self.buffer_task or self.buffer_task.done():
         self.buffer_task = asyncio.create_task(self.process_buffer())
-
 
 # ─────────────────────────────
 # Encerrar conversa + cooldown
