@@ -75,11 +75,34 @@ class AIChatCog(commands.Cog):
             return True
         return False
 
-    def build_prompt(self, entries: List[Dict[str, Any]]) -> str:
-        """Constrói o prompt para enviar ao AIClient"""
-        texto_chat = "\n".join([f"{e['author_display']}: {e['content']}" for e in entries])
-        prompt = f"Responda de forma natural e fluida, com base nas seguintes mensagens:\n{texto_chat}\n"
-        return prompt
+    def build_prompt(self, entries: List[Dict[str, Any]], state) -> str:
+    texto_chat = "\n".join(
+        f"{e['author_display']}: {e['content']}" for e in entries
+    )
+
+    # 🎭 Tom da resposta
+    tone_instruction = {
+        "normal": "Responda de forma natural e fluida.",
+        "seco": "Seja direto, curto e sem enrolação.",
+        "sarcastico": "Use ironia leve, respostas secas e humor frio."
+    }.get(state.tone, "Responda de forma natural.")
+
+    # ⏳ Nível de paciência
+    patience_instruction = {
+        1: "Explique normalmente.",
+        2: "Seja mais objetivo.",
+        3: "Mostre pouca paciência.",
+        4: "Responda o mínimo possível para encerrar."
+    }.get(state.patience_level, "")
+
+    prompt = (
+        f"{tone_instruction}\n"
+        f"{patience_instruction}\n\n"
+        f"Conversa:\n{texto_chat}\n\n"
+        "Gere apenas UMA resposta curta, sem explicações extras."
+    )
+
+    return prompt
 
     @commands.Cog.listener()
 async def on_message(self, message: discord.Message):
