@@ -82,44 +82,71 @@ class AIChatCog(commands.Cog):
         return prompt
 
     @commands.Cog.listener()
-    async def on_message(self, message: discord.Message):
-        """Processa as mensagens enviadas no servidor."""
-        if message.author.bot:
-            return
+async def on_message(self, message: discord.Message):
+    # Ignora bots
+    if message.author.bot:
+        return
 
-        # Se é menção ao bot, processa
-        if self.bot.user in message.mentions:
-            if not is_admin_member(message.author) and not self.active:
-                return
-            await self.process_buffer()
+    # Só atua no canal principal
+    if message.channel.id != CHANNEL_MAIN:
+        return
 
-        # Se não é menção ao bot, mas não está no canal principal, ignora
-        if message.channel.id != CHANNEL_MAIN:
-            return
+    # 🧠 Avalia estado mental / permissões
+    state = self.state_manager.evaluate(message, self.bot.user)
 
-        if not self.active:
-            self.active = True
+    if not state.should_respond:
+        return
 
-        # Cria a entrada da mensagem e agrupa
-        entry = {"author_id": message.author.id, "content": message.content, "ts": now_ts()}
-        self.buffer.append(entry)
+    # Marca conversa como ativa
+    if not self.active:
+        self.active = True
 
-        if not self.buffer_task:
-            self.buffer_task = asyncio.create_task(self.process_buffer())
+    # Cria entrada para o buffer
+    entry = {
+        "author_id": message.author.id,
+        "author_display": message.author.display_name,
+        "content": message.content,
+        "ts": now_ts()
+    }
 
-    async def end_conversation(self):
-        """Finaliza a conversa e ativa o cooldown."""
-        self.active = False
-        self.buffer.clear()
-        cooldown = random.randint(COOLDOWN_MIN, COOLDOWN_MAX)
-        self.cooldown_until = now_ts() + cooldown
+    self.buffer.append(entry)
 
-    @commands.hybrid_command(name="ai_status", with_app_command=True, description="Mostrar status do AI (ADM apenas).")
-    @commands.check(lambda ctx: is_admin_member(ctx.author))
-    async def ai_status(self, ctx: commands.Context):
-        """Comando de status do bot"""
-        emb = discord.Embed(title="AI Chat Status", color=discord.Color.blurple())
-        emb.add_field(name="Ativo", value=str(self.active))
-        emb.add_field(name="Última resposta", value=(self.last_response_text[:400] + "...") if self.last_response_text else "—")
-        await ctx.reply(embed=emb, ephemeral=True)
+    # Inicia processamento se não houver task rodando
+    if not self.buffer_task or self.buffer_task.done():
+        self.buffer_task = asyncio.create_task(self.process_buffer())
 
+
+# ─────────────────────────────
+# Encerrar conversa + cooldown
+# ─────────────────────────────
+async def end_conversation(self):
+    self.active = False
+    self.buffer.clear()
+
+    cooldown = random.randint(COOLDOWN_MIN, COOLDOWN_MAX)
+    self.cooldown_until = now_ts() + cooldown
+
+
+# ─────────────────────────────
+# Slash command: status
+# ─────────────────────────────
+@commands.hybrid_command(
+    name="ai_status",
+    with_app_command=True,
+    description="Mostrar status do AI (ADM apenas)."
+)
+@commands.check(lambda ctx: is_admin_member(ctx.author))
+async def ai_status(self, ctx: commands.Context):
+    emb = discord.Embed(
+        title="AI Chat Status",
+        color=discord.Color.blurple()
+    )
+
+    emb.add_field(name="Ativo", value=str(self.active))
+    emb.add_field(
+        name="Última resposta",
+        value=(self.last_response_text[:400] + "...")
+        if self.last_response_text else "—"
+    )
+
+    await ctx.reply(embed=emb, ephemeral=True)
