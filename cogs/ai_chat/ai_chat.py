@@ -28,28 +28,46 @@ class AIChatCog(commands.Cog):
         )
 
     async def process_buffer(self):
-        """Processa mensagens do buffer, interagindo com o AIClient."""
-        if not self.buffer:
-            return
+    """Processa mensagens do buffer respeitando estado mental e fluxo da conversa."""
 
-        # Verifica se a conversa pode ser encerrada (inatividade)
-        if self.should_end_conversation():
-            await self.end_conversation()
-            return
+    if not self.buffer:
+        return
 
-        # Prepara as mensagens e limpa o buffer
-        messages_to_process = list(self.buffer)
+    # Se a conversa foi encerrada externamente
+    if not self.active:
         self.buffer.clear()
+        return
 
-        # Verifica se a conversa pode começar
-        if not self.should_start_conversation(messages_to_process):
-            return
+    # Copia o buffer e limpa imediatamente
+    entries = list(self.buffer)
+    self.buffer.clear()
 
-        # Monta o prompt para IA e chama o AIClient
-        prompt = self.build_prompt(messages_to_process, state)
-        response = await self.ai_client.ask([{"content": prompt}])
+    # Recupera o último estado mental avaliado
+    state = getattr(self, "last_state", None)
 
-        await self.send_response(response)
+    # Segurança: se não houver estado, não responde
+    if not state or not state.should_respond:
+        return
+
+    # Monta o prompt com contexto + estado mental
+    prompt = self.build_prompt(entries, state)
+
+    try:
+        response = await self.ai_client.ask(
+            [{"role": "user", "content": prompt}]
+        )
+    except Exception as e:
+        print(f"[AIChat] Erro ao chamar IA: {e}")
+        return
+
+    # Delay humano baseado em paciência
+    delay = random.uniform(
+        0.8 * state.patience_level,
+        1.6 * state.patience_level
+    )
+    await asyncio.sleep(delay)
+
+    await self.send_response(response)
 
     async def send_response(self, response: str):
         """Envia a resposta ao canal de acordo com o fluxo."""
@@ -115,7 +133,7 @@ async def on_message(self, message: discord.Message):
         return
 
     # 🧠 Avalia estado mental / permissões
-    state = self.state_manager.evaluate(message, self.bot.user)
+    
 
     if not state.should_respond:
         return
