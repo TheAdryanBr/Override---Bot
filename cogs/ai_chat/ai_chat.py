@@ -46,7 +46,7 @@ class AIChatCog(commands.Cog):
             return
 
         # Monta o prompt para IA e chama o AIClient
-        prompt = self.build_prompt(messages_to_process)
+        prompt = self.build_prompt(messages_to_process, state)
         response = await self.ai_client.ask([{"content": prompt}])
 
         await self.send_response(response)
