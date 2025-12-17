@@ -152,11 +152,12 @@ class AIChatCog(commands.Cog):
             self.active = True
 
         entry = {
-            "author_id": message.author.id,
-            "author_display": message.author.display_name,
-            "content": message.content,
-            "ts": now_ts()
-        }
+    "author_id": message.author.id,
+    "author_display": message.author.display_name,
+    "content": message.content,
+    "ts": now_ts(),
+    "state": state  # 👈 estado viaja com a mensagem
+}
 
         self.buffer.append(entry)
 
