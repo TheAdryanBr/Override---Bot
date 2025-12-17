@@ -8,39 +8,33 @@ from discord.ext import commands
 
 from ai_client import AIClient
 from ai_state import AIStateManager
-from utils import (
-    is_admin_member,
-    now_ts,
-    CHANNEL_MAIN,
-)
+from utils import is_admin_member, now_ts, CHANNEL_MAIN
 
 # ─────────────────────────────
-# Constantes seguras (evitam crash)
+# Constantes seguras
 # ─────────────────────────────
 COOLDOWN_MIN = 20
 COOLDOWN_MAX = 40
 END_CONVO_MIN = 120
 END_CONVO_MAX = 240
+BUFFER_DELAY = (1.5, 3.0)
 
 
 class AIChatCog(commands.Cog):
-    """Cog de chat com IA: buffer, estado mental e resposta humanizada."""
+    """Cog principal do chat com IA"""
 
     def __init__(self, bot: commands.Bot, memory=None):
         self.bot = bot
 
-        # Buffer de mensagens
         self.buffer: List[Dict[str, Any]] = []
         self.buffer_task: Optional[asyncio.Task] = None
 
-        # Estado da conversa
-        self.active: bool = False
-        self.cooldown_until: float = 0.0
+        self.active = False
+        self.cooldown_until = 0.0
+        self.last_response_ts = 0.0
         self.last_response_text: Optional[str] = None
-        self.last_response_ts: float = 0.0
         self.last_state = None
 
-        # Gerenciador de estado mental
         self.state_manager = AIStateManager(
             owner_id=473962013031399425,
             admin_role_id=1213534921055010876,
@@ -48,7 +42,6 @@ class AIChatCog(commands.Cog):
             memory=memory
         )
 
-        # Cliente IA
         self.ai_client = AIClient(
             api_key="SUA_KEY_AQUI",
             system_prompt="INSTRUÇÕES DA IA AQUI",
@@ -57,13 +50,13 @@ class AIChatCog(commands.Cog):
         )
 
     # ─────────────────────────────
-    # CORE LOOP
+    # BUFFER PROCESSOR
     # ─────────────────────────────
 
     async def process_buffer(self):
-        """Processa mensagens acumuladas respeitando o estado mental."""
+        await asyncio.sleep(random.uniform(*BUFFER_DELAY))
 
-        if not self.buffer or not self.active:
+        if not self.active or not self.buffer:
             self.buffer.clear()
             return
 
@@ -85,8 +78,8 @@ class AIChatCog(commands.Cog):
             return
 
         delay = random.uniform(
-            0.8 * state.patience_level,
-            1.6 * state.patience_level
+            0.6 * state.patience_level,
+            1.4 * state.patience_level
         )
         await asyncio.sleep(delay)
 
@@ -110,13 +103,13 @@ class AIChatCog(commands.Cog):
             f"{e['author_display']}: {e['content']}" for e in entries
         )
 
-        tone_instruction = {
+        tone = {
             "normal": "Responda de forma natural e fluida.",
             "seco": "Seja direto, curto e sem enrolação.",
             "sarcastico": "Use ironia leve e humor frio."
         }.get(state.tone, "Responda de forma natural.")
 
-        patience_instruction = {
+        patience = {
             1: "Explique normalmente.",
             2: "Seja mais objetivo.",
             3: "Mostre pouca paciência.",
@@ -124,10 +117,10 @@ class AIChatCog(commands.Cog):
         }.get(state.patience_level, "")
 
         return (
-            f"{tone_instruction}\n"
-            f"{patience_instruction}\n\n"
+            f"{tone}\n"
+            f"{patience}\n\n"
             f"Conversa:\n{texto_chat}\n\n"
-            "Gere apenas UMA resposta curta, sem explicações extras."
+            "Gere apenas UMA resposta curta."
         )
 
     # ─────────────────────────────
@@ -142,24 +135,24 @@ class AIChatCog(commands.Cog):
         if message.channel.id != CHANNEL_MAIN:
             return
 
+        now = now_ts()
+        if now < self.cooldown_until:
+            return
+
         state = self.state_manager.evaluate(message, self.bot.user)
         self.last_state = state
 
         if not state.should_respond:
             return
 
-        if not self.active:
-            self.active = True
+        self.active = True
 
-        entry = {
-    "author_id": message.author.id,
-    "author_display": message.author.display_name,
-    "content": message.content,
-    "ts": now_ts(),
-    "state": state  # 👈 estado viaja com a mensagem
-}
-
-        self.buffer.append(entry)
+        self.buffer.append({
+            "author_id": message.author.id,
+            "author_display": message.author.display_name,
+            "content": message.content,
+            "ts": now
+        })
 
         if not self.buffer_task or self.buffer_task.done():
             self.buffer_task = asyncio.create_task(self.process_buffer())
@@ -168,24 +161,15 @@ class AIChatCog(commands.Cog):
     # CONVERSA
     # ─────────────────────────────
 
-    def should_end_conversation(self) -> bool:
-        if not self.last_response_ts:
-            return False
-
-        return (
-            now_ts() - self.last_response_ts
-            > random.randint(END_CONVO_MIN, END_CONVO_MAX)
-        )
-
     async def end_conversation(self):
         self.active = False
         self.buffer.clear()
-
-        cooldown = random.randint(COOLDOWN_MIN, COOLDOWN_MAX)
-        self.cooldown_until = now_ts() + cooldown
+        self.cooldown_until = now_ts() + random.randint(
+            COOLDOWN_MIN, COOLDOWN_MAX
+        )
 
     # ─────────────────────────────
-    # SLASH COMMAND
+    # STATUS
     # ─────────────────────────────
 
     @commands.hybrid_command(
@@ -203,7 +187,7 @@ class AIChatCog(commands.Cog):
         emb.add_field(name="Ativo", value=str(self.active))
         emb.add_field(
             name="Última resposta",
-            value=(self.last_response_text[:400] + "...")
+            value=self.last_response_text[:400]
             if self.last_response_text else "—"
         )
 
