@@ -7,11 +7,11 @@ from bs4 import BeautifulSoup
 # ─────────────────────────────
 # CONFIG (IDs você ajusta depois)
 # ─────────────────────────────
-TEST_GUILD_ID = 1384621028877144098
+TEST_GUILD_ID = 1384621027627372714
 TEST_CHANNEL_ID = 1444576416145346621
 
 MAIN_CHANNEL_ID = 1216133008680292412
-PING_ROLE_ID = 1254471933588799618
+PING_ROLE_ID = 1254470219305324564
 
 # ─────────────────────────────
 # REGEX
