@@ -113,6 +113,7 @@ async def on_ready():
 # ===== CARREGAMENTO DOS COGS =====
 async def load_all_cogs():
     for cog in COGS:
+        print(f"[DEBUG] Tentando carregar: {cog}")
         try:
             await bot.load_extension(cog)
             print(f"[COG] Carregado: {cog}")
