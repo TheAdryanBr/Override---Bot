@@ -98,6 +98,10 @@ COGS = [
 async def on_ready():
     print(f"[LOGADO] {bot.user} está online!")
 
+    print("📦 Cogs carregados:")
+    for name in bot.cogs:
+        print(" -", name)
+
     try:
         synced = await bot.tree.sync()
         print(f"[SLASH] {len(synced)} comandos sincronizados.")
