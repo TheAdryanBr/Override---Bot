@@ -5,13 +5,15 @@ import re
 from bs4 import BeautifulSoup
 
 # ─────────────────────────────
-# CONFIG (IDs você ajusta depois)
+# CONFIG
 # ─────────────────────────────
 TEST_GUILD_ID = 1384621027627372714
 TEST_CHANNEL_ID = 1444576416145346621
 
 MAIN_CHANNEL_ID = 1216133008680292412
 PING_ROLE_ID = 1254470219305324564
+
+FREESTUFF_BOT_ID = 672822334641537041  # ⬅️ COLOQUE O ID REAL DO FREESTUFF
 
 # ─────────────────────────────
 # REGEX
@@ -20,7 +22,6 @@ STEAM_REGEX = r"https?://store\.steampowered\.com/app/\d+/"
 EPIC_REGEX = r"https?://store\.epicgames\.com/[^\s]+"
 GOG_REGEX = r"https?://www\.gog\.com/en/game/[^\s]+"
 
-# cache simples (limpa automaticamente)
 sent_cache = set()
 MAX_CACHE = 200
 
@@ -35,13 +36,9 @@ class FreeStuffMonitor(commands.Cog):
     @commands.Cog.listener()
     async def on_message(self, msg: discord.Message):
 
-        # sempre permitir comandos
         await self.bot.process_commands(msg)
 
         if not msg.guild:
-            return
-
-        if not msg.author.bot:
             return
 
         if msg.guild.id != TEST_GUILD_ID:
@@ -50,12 +47,21 @@ class FreeStuffMonitor(commands.Cog):
         if msg.channel.id != TEST_CHANNEL_ID:
             return
 
+        # 🔒 Garante que é o FreeStuff
+        if msg.author.id != FREESTUFF_BOT_ID:
+            return
+
         if not msg.embeds:
             return
 
-        embed = msg.embeds[0]
-        platform, url = self.extract_platform_and_url(embed)
+        embed = next(
+            (e for e in msg.embeds if e.title or e.description or e.url),
+            None
+        )
+        if not embed:
+            return
 
+        platform, url = self.extract_platform_and_url(embed)
         if not platform or not url:
             return
 
@@ -79,21 +85,18 @@ class FreeStuffMonitor(commands.Cog):
                 content=f"🎮 **Novo jogo gratuito disponível!** <@&{PING_ROLE_ID}>",
                 embed=final_embed
             )
-        except discord.Forbidden:
-            print("[FreeStuff] Sem permissão para enviar mensagem.")
         except Exception as e:
-            print(f"[FreeStuff] Erro ao enviar embed: {e}")
+            print(f"[FreeStuff] Erro ao enviar mensagem: {e}")
 
     # ─────────────────────────────
-    # EXTRAÇÃO DE PLATAFORMA
+    # EXTRAÇÃO
     # ─────────────────────────────
     def extract_platform_and_url(self, embed: discord.Embed):
-        parts = [
+        text = " ".join([
             embed.title or "",
             embed.description or "",
             embed.url or ""
-        ]
-        text = " ".join(parts)
+        ])
 
         for name, regex in (
             ("Steam", STEAM_REGEX),
@@ -204,7 +207,7 @@ class FreeStuffMonitor(commands.Cog):
         return embed
 
     # ─────────────────────────────
-    # COMANDO DE TESTE
+    # TESTE
     # ─────────────────────────────
     @commands.command(name="testfree")
     async def test_free(self, ctx):
