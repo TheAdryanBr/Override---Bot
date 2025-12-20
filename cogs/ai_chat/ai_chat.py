@@ -70,9 +70,9 @@ class AIChatCog(commands.Cog):
         prompt = self.build_prompt(entries, state)
 
         try:
-            response = await self.ai_client.ask([
-                {"role": "user", "content": prompt}
-            ])
+            response = await self.ai_client.ask(
+                [{"role": "user", "content": prompt}]
+            )
         except Exception as e:
             print(f"[AIChat] Erro IA: {e}")
             return
@@ -142,6 +142,27 @@ class AIChatCog(commands.Cog):
         state = self.state_manager.evaluate(message, self.bot.user)
         self.last_state = state
 
+        # 🔥 OVERRIDE IMEDIATO (ADM / override permitido)
+        if state.allow_override:
+            prompt = self.build_prompt(
+                [{
+                    "author_display": message.author.display_name,
+                    "content": message.content
+                }],
+                state
+            )
+
+            try:
+                response = await self.ai_client.ask(
+                    [{"role": "user", "content": prompt}]
+                )
+                await self.send_response(response)
+            except Exception as e:
+                print(f"[AIChat] Erro no override: {e}")
+
+            return  # ← impede cair no buffer
+
+        # ⛔ bloqueio normal
         if not state.should_respond:
             return
 
