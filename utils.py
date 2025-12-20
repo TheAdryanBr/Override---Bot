@@ -3,7 +3,7 @@ import time
 import discord
 
 # 🔹 ID do canal principal (ajuste se quiser puxar do ENV depois)
-CHANNEL_MAIN = 1216133008680292412  # ← CONFIRA SE ESSE ID ESTÁ CERTO
+CHANNEL_MAIN = 1261154588766244905  # ← CONFIRA SE ESSE ID ESTÁ CERTO
 
 # ─────────────────────────────
 # TEMPO
