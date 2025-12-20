@@ -5,12 +5,20 @@ import random
 import asyncio
 from typing import List, Dict, Any, Optional
 
+print("[AI_CHAT] imports padrão ok")
+
 import discord
 from discord.ext import commands
+print("[AI_CHAT] discord ok")
+
+from .ai_state import AIStateManager
+print("[AI_CHAT] ai_state ok")
+
+from utils import is_admin_member, now_ts, CHANNEL_MAIN
+print("[AI_CHAT] utils ok")
 
 from .ai_client import AIClient
-from .ai_state import AIStateManager
-from utils import is_admin_member, now_ts, CHANNEL_MAIN
+print("[AI_CHAT] ai_client ok")
 
 print("[AI_CHAT] imports finalizados, definindo classe")
 
