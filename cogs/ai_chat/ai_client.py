@@ -1,7 +1,5 @@
 import asyncio
 from typing import List
-from openai import OpenAI
-
 
 class AIClient:
     def __init__(
@@ -13,20 +11,32 @@ class AIClient:
         max_tokens: int = 200,
         temperature: float = 0.6
     ):
-        self.client = OpenAI(api_key=api_key)
+        self.api_key = api_key
         self.system_prompt = system_prompt
         self.models = primary_models + fallback_models
         self.max_tokens = max_tokens
         self.temperature = temperature
 
+        self.client = None  # ⬅️ NÃO cria aqui
         self.last_model_used = None
         self.last_error = None
 
     # ----------------------
-    # Chamada síncrona (isolada)
+    # Cliente lazy (cria só quando precisar)
+    # ----------------------
+    def _get_client(self):
+        if self.client is None:
+            from openai import OpenAI  # import tardio
+            self.client = OpenAI(api_key=self.api_key)
+        return self.client
+
+    # ----------------------
+    # Chamada síncrona
     # ----------------------
     def _sync_call(self, model: str, messages: List[dict]) -> str:
-        response = self.client.responses.create(
+        client = self._get_client()
+
+        response = client.responses.create(
             model=model,
             input=messages,
             max_output_tokens=self.max_tokens,
@@ -35,7 +45,7 @@ class AIClient:
         return response.output_text.strip()
 
     # ----------------------
-    # Chamada async com fallback
+    # Async com fallback
     # ----------------------
     async def ask(self, messages: List[dict]) -> str:
         payload = [
@@ -50,12 +60,11 @@ class AIClient:
                 self.last_model_used = model
                 self.last_error = None
 
-                result = await asyncio.to_thread(
+                return await asyncio.to_thread(
                     self._sync_call,
                     model,
                     payload
                 )
-                return result
 
             except Exception as e:
                 last_exception = e
