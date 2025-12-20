@@ -213,3 +213,6 @@ class AIChatCog(commands.Cog):
         )
 
         await ctx.reply(embed=emb, ephemeral=True)
+
+async def setup(bot):
+    await bot.add_cog(AIChatCog(bot))
