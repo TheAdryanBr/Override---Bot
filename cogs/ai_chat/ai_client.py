@@ -1,6 +1,6 @@
 import asyncio
 from typing import List
-from .openai import OpenAI
+from openai import OpenAI
 
 
 class AIClient:
