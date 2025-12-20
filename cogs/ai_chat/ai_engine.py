@@ -4,7 +4,7 @@ import random
 import time
 from typing import List, Dict, Any, Optional
 
-from openai import OpenAI
+from .openai import OpenAI
 
 # ======================
 # CLIENTE OPENAI
