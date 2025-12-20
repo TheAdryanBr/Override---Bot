@@ -140,7 +140,8 @@ class AIChatCog(commands.Cog):
     # ─────────────────────────────
 
     @commands.Cog.listener()
-    async def on_message(self, message: discord.Message):
+async def on_message(self, message: discord.Message):
+    print("[AI_CHAT] on_message chamado:", message.content)
         if message.author.bot:
             return
 
