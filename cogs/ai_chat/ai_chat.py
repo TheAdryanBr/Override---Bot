@@ -6,8 +6,8 @@ from typing import List, Dict, Any, Optional
 import discord
 from discord.ext import commands
 
-from ai_client import AIClient
-from ai_state import AIStateManager
+from .ai_client import AIClient
+from .ai_state import AIStateManager
 from utils import is_admin_member, now_ts, CHANNEL_MAIN
 
 # ─────────────────────────────
