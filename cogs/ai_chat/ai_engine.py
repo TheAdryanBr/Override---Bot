@@ -1,6 +1,5 @@
-# cogs/ai_engine.py
+# cogs/ai_chat/ai_engine.py
 import asyncio
-import random
 import time
 from typing import List, Dict, Any, Optional
 
@@ -17,58 +16,78 @@ client_ai = OpenAI()
 # ======================
 
 class AIEngine:
-    def __init__(self, system_prompt: str, primary_models, fallback_models):
+    def __init__(
+        self,
+        system_prompt: str,
+        primary_models: List[str],
+        fallback_models: List[str],
+        max_output_tokens: int = 200,
+        temperature: float = 0.5,
+    ):
         self.system_prompt = system_prompt
         self.primary_models = primary_models
         self.fallback_models = fallback_models
+        self.max_output_tokens = max_output_tokens
+        self.temperature = temperature
+
         self.current_model_in_use: Optional[str] = None
         self.recent_error: Optional[str] = None
 
     # ----------------------
-    # Model order
+    # Ordem dos modelos
     # ----------------------
-    def choose_model_order(self):
+
+    def choose_model_order(self) -> List[str]:
         return self.primary_models + self.fallback_models
 
     # ----------------------
     # Chamada OpenAI (thread)
     # ----------------------
-    async def _call_openai(
-        self,
-        model: str,
-        prompt: str,
-        max_output_tokens: int = 200,
-        temperature: float = 0.5,
-    ) -> str:
+
+    async def _call_openai(self, model: str, prompt: str) -> str:
         def sync_call():
             return client_ai.responses.create(
                 model=model,
                 input=prompt,
-                max_output_tokens=max_output_tokens,
-                temperature=temperature,
+                max_output_tokens=self.max_output_tokens,
+                temperature=self.temperature,
             )
 
         resp = await asyncio.to_thread(sync_call)
-        return resp.output_text
 
-    async def ask_gpt_with_fallback(self, prompt: str) -> str:
+        # proteção absoluta contra retorno vazio
+        text = getattr(resp, "output_text", None)
+        if not text:
+            raise RuntimeError("Resposta vazia da OpenAI")
+
+        return text.strip()
+
+    # ----------------------
+    # Fallback
+    # ----------------------
+
+    async def ask_with_fallback(self, prompt: str) -> str:
         last_exc = None
-        for m in self.choose_model_order():
+
+        for model in self.choose_model_order():
             try:
-                self.current_model_in_use = m
-                text = await self._call_openai(m, prompt)
+                self.current_model_in_use = model
+                text = await self._call_openai(model, prompt)
                 self.recent_error = None
                 return text
+
             except Exception as e:
                 last_exc = e
-                self.recent_error = f"Model {m} failed: {e}"
-                await asyncio.sleep(0.3)
+                self.recent_error = f"{model}: {e}"
+                await asyncio.sleep(0.25)
 
-        raise RuntimeError(f"All models failed. Last error: {last_exc}")
+        # fallback final garantido
+        return "Tô meio lento agora, tenta de novo."
 
     # ----------------------
-    # Sanitização / limpeza
+    # Limpeza de texto
     # ----------------------
+
     def sanitize_giria(self, text: str) -> str:
         replacements = {
             "oxe,": "olha,",
@@ -116,27 +135,38 @@ class AIEngine:
     # ----------------------
     # Prompt builder
     # ----------------------
+
     def build_prompt(self, entries: List[Dict[str, Any]]) -> str:
         texto_chat = "\n".join(
-            f"{e['author_display']}: {e['content']}" for e in entries
+            f"{e['author_display']}: {e['content']}"
+            for e in entries
+            if e.get("content")
         )
 
-        prompt = (
+        if not texto_chat.strip():
+            texto_chat = "Usuário chamou você."
+
+        return (
             self.system_prompt
             + "\n\nCONVERSA:\n"
             + texto_chat
             + "\n\nGere UMA resposta curta (1–3 frases), natural e no tom correto.\n"
         )
 
-        return prompt
+    # ----------------------
+    # API FINAL USADA PELO BOT
+    # ----------------------
 
-    # ----------------------
-    # Resposta completa
-    # ----------------------
     async def generate_response(self, entries: List[Dict[str, Any]]) -> str:
         prompt = self.build_prompt(entries)
-        raw = await self.ask_gpt_with_fallback(prompt)
 
+        raw = await self.ask_with_fallback(prompt)
+
+        # proteção final
+        if not raw or not raw.strip():
+            return "Fala aí."
+
+        # remove lixo no final
         if "\n[" in raw:
             lines = raw.strip().splitlines()
             if lines and "[" in lines[-1]:
