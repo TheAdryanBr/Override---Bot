@@ -2,6 +2,7 @@
 import time
 from typing import Optional
 
+
 class AIState:
     def __init__(
         self,
@@ -14,10 +15,8 @@ class AIState:
         self.should_respond = should_respond
         self.reason = reason
         self.allow_override = allow_override
-
-        # 🎭 Novos atributos mentais
-        self.patience_level = patience_level   # 1 a 4
-        self.tone = tone                       # normal | seco | sarcastico
+        self.patience_level = patience_level
+        self.tone = tone
 
 
 class AIStateManager:
@@ -26,7 +25,7 @@ class AIStateManager:
         owner_id: int,
         admin_role_id: int,
         cooldown: int = 30,
-        memory=None  # <- ai_memory injetado
+        memory=None
     ):
         self.owner_id = owner_id
         self.admin_role_id = admin_role_id
@@ -57,34 +56,19 @@ class AIStateManager:
         mentioned = bot_user in message.mentions
         in_conversation = user_id in self.active_conversations
 
-        # 🧠 Puxa perfil do usuário (se existir)
-        profile = None
-        if self.memory:
-            profile = self.memory.get_user(user_id)
-
-        # 🎭 Valores padrão
+        # 🧠 Perfil do usuário
         patience = 1
         tone = "normal"
 
-        if profile:
-            patience = profile.get("patience", 1)
-            tone = profile.get("tone_bias", "normal")
+        if self.memory:
+            profile = self.memory.get_user(user_id)
+            if profile:
+                patience = profile.get("patience", 1)
+                tone = profile.get("tone_bias", "normal")
 
-            # usuário impaciente → tom mais seco
-            if profile.get("last_emotion") == "impaciente":
-                tone = "seco"
-                patience = min(patience + 1, 4)
-
-        # 🔒 Cooldown (usuário comum fora de conversa)
-        last = self.last_interaction.get(user_id, 0)
-        if not is_admin and not in_conversation:
-            if now - last < self.cooldown:
-                return AIState(
-                    False,
-                    "cooldown",
-                    patience_level=patience,
-                    tone=tone
-                )
+                if profile.get("last_emotion") == "impaciente":
+                    tone = "seco"
+                    patience = min(patience + 1, 4)
 
         # 🔒 ADM sempre pode iniciar com mention
         if is_admin and mentioned:
@@ -97,24 +81,17 @@ class AIStateManager:
                 tone=tone
             )
 
-        # 🔒 Usuário comum inicia com mention se cooldown OK
-        if not in_conversation:
-            if mentioned:
-                self._activate(user_id)
-                return AIState(
-                    True,
-                    "user_mention_start",
-                    patience_level=patience,
-                    tone=tone
-                )
+        # 🔒 Usuário comum inicia conversa com mention
+        if mentioned and not in_conversation:
+            self._activate(user_id)
             return AIState(
-                False,
-                "not_in_conversation",
+                True,
+                "user_mention_start",
                 patience_level=patience,
                 tone=tone
             )
 
-        # 🔓 Conversa ativa → comportamento humano
+        # 🔓 Conversa ativa → ignora cooldown
         if in_conversation:
             self._touch(user_id)
             return AIState(
@@ -125,7 +102,24 @@ class AIStateManager:
                 tone=tone
             )
 
-        return AIState(False, "default_block")
+        # 🔒 Cooldown (usuário comum fora de conversa)
+        last = self.last_interaction.get(user_id, 0)
+        if not is_admin:
+            if now - last < self.cooldown:
+                return AIState(
+                    False,
+                    "cooldown",
+                    patience_level=patience,
+                    tone=tone
+                )
+
+        # 🚫 Fora de conversa e sem mention
+        return AIState(
+            False,
+            "not_in_conversation",
+            patience_level=patience,
+            tone=tone
+        )
 
     # ─────────────────────────────
     # STATE CONTROL
