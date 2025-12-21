@@ -5,25 +5,15 @@ import random
 import asyncio
 from typing import List, Dict, Any, Optional
 
-print("[AI_CHAT] imports padrão ok")
-
 import discord
 from discord.ext import commands
-print("[AI_CHAT] discord ok")
 
 from .ai_state import AIStateManager
-print("[AI_CHAT] ai_state ok")
-
 from utils import is_admin_member, now_ts, CHANNEL_MAIN
-print("[AI_CHAT] utils ok")
-
 from .ai_client import AIClient
-print("[AI_CHAT] ai_client ok")
-
-print("[AI_CHAT] imports finalizados, definindo classe")
 
 # ─────────────────────────────
-# Constantes seguras
+# Constantes
 # ─────────────────────────────
 COOLDOWN_MIN = 20
 COOLDOWN_MAX = 40
@@ -62,7 +52,7 @@ class AIChatCog(commands.Cog):
         )
 
     # ─────────────────────────────
-    # BUFFER PROCESSOR
+    # BUFFER
     # ─────────────────────────────
 
     async def process_buffer(self):
@@ -96,6 +86,7 @@ class AIChatCog(commands.Cog):
         await asyncio.sleep(delay)
 
         await self.send_response(response)
+        await self.end_conversation()
 
     async def send_response(self, response: str):
         channel = self.bot.get_channel(CHANNEL_MAIN)
@@ -136,26 +127,23 @@ class AIChatCog(commands.Cog):
         )
 
     # ─────────────────────────────
-    # LISTENER
+    # LISTENER (CORRIGIDO)
     # ─────────────────────────────
 
     @commands.Cog.listener()
-async def on_message(self, message: discord.Message):
-    print("[AI_CHAT] on_message chamado:", message.content)
+    async def on_message(self, message: discord.Message):
+        print("[AI_CHAT] on_message:", message.content)
+
         if message.author.bot:
             return
 
         if message.channel.id != CHANNEL_MAIN:
             return
 
-        now = now_ts()
-        if now < self.cooldown_until:
-            return
-
         state = self.state_manager.evaluate(message, self.bot.user)
         self.last_state = state
 
-        # 🔥 OVERRIDE IMEDIATO (ADM / override permitido)
+        # 🔥 override ignora cooldown
         if state.allow_override:
             prompt = self.build_prompt(
                 [{
@@ -171,11 +159,14 @@ async def on_message(self, message: discord.Message):
                 )
                 await self.send_response(response)
             except Exception as e:
-                print(f"[AIChat] Erro no override: {e}")
+                print(f"[AIChat] Erro override: {e}")
 
-            return  # ← impede cair no buffer
+            return
 
-        # ⛔ bloqueio normal
+        # ⏳ cooldown normal
+        if now_ts() < self.cooldown_until:
+            return
+
         if not state.should_respond:
             return
 
@@ -185,7 +176,7 @@ async def on_message(self, message: discord.Message):
             "author_id": message.author.id,
             "author_display": message.author.display_name,
             "content": message.content,
-            "ts": now
+            "ts": now_ts()
         })
 
         if not self.buffer_task or self.buffer_task.done():
@@ -226,6 +217,7 @@ async def on_message(self, message: discord.Message):
         )
 
         await ctx.reply(embed=emb, ephemeral=True)
+
 
 async def setup(bot):
     await bot.add_cog(AIChatCog(bot))
