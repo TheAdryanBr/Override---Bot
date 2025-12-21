@@ -1,103 +1,49 @@
-import random
+print("[AI_CHAT] import iniciado")
+
 import asyncio
-from typing import List, Dict, Any, Optional
+import random
+from typing import Optional
 
 import discord
 from discord.ext import commands
 
 from .ai_state import AIStateManager
-from .ai_client import AIClient
+from .ai_engine import AIEngine
+from .message_buffer import MessageBuffer
+from .ai_prompt import build_prompt
 from utils import CHANNEL_MAIN, now_ts
 
 
-BUFFER_DELAY = (1.5, 3.0)
-
-
 class AIChatCog(commands.Cog):
-    def __init__(self, bot: commands.Bot, memory=None):
+    def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-        self.buffer: List[Dict[str, Any]] = []
-        self.buffer_task: Optional[asyncio.Task] = None
-
-        self.last_state = None
-        self.last_user_id: Optional[int] = None
-
-        self.state_manager = AIStateManager(
+        # ======================
+        # CORE COMPONENTS
+        # ======================
+        self.state = AIStateManager(
             owner_id=473962013031399425,
             admin_role_id=1213534921055010876,
             cooldown=30,
-            memory=memory
         )
 
-        self.ai_client = AIClient(
-            api_key="SUA_KEY_AQUI",
-            system_prompt="INSTRUÇÕES DA IA AQUI",
+        self.engine = AIEngine(
+            system_prompt="",  # já incluso no ai_prompt
             primary_models=["gpt-5.1", "gpt-5.1-mini"],
             fallback_models=["gpt-4.1", "gpt-4o-mini"],
         )
 
-    # ----------------------
-    # BUFFER
-    # ----------------------
+        self.buffer = MessageBuffer(max_messages=12)
 
-    async def process_buffer(self):
-        await asyncio.sleep(random.uniform(*BUFFER_DELAY))
+        # ======================
+        # CONTROLE
+        # ======================
+        self.processing: bool = False
+        self.last_response_ts: float = 0.0
 
-        if not self.buffer:
-            return
-
-        entries = list(self.buffer)
-        self.buffer.clear()
-
-        state = self.last_state
-        if not state or not state.should_respond:
-            return
-
-        prompt = self.build_prompt(entries, state)
-
-        try:
-            response = await self.ai_client.ask(
-                [{"role": "user", "content": prompt}]
-            )
-        except Exception as e:
-            print("[AIChat] Erro IA:", e)
-            return
-
-        await self.send_response(response)
-
-    async def send_response(self, response: str):
-        channel = self.bot.get_channel(CHANNEL_MAIN)
-        if not channel:
-            print("[AIChat] CHANNEL_MAIN inválido")
-            return
-
-        await channel.send(response)
-
-    # ----------------------
-    # PROMPT
-    # ----------------------
-
-    def build_prompt(self, entries: List[Dict[str, Any]], state) -> str:
-        texto = "\n".join(
-            f"{e['author_display']}: {e['content']}" for e in entries
-        )
-
-        tone = {
-            "normal": "Responda de forma natural.",
-            "seco": "Responda curto e direto.",
-            "sarcastico": "Responda com sarcasmo leve."
-        }.get(state.tone, "Responda de forma natural.")
-
-        return (
-            f"{tone}\n\n"
-            f"Conversa:\n{texto}\n\n"
-            "Gere apenas UMA resposta curta."
-        )
-
-    # ----------------------
+    # ─────────────────────────────
     # LISTENER
-    # ----------------------
+    # ─────────────────────────────
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
@@ -107,23 +53,79 @@ class AIChatCog(commands.Cog):
         if message.channel.id != CHANNEL_MAIN:
             return
 
-        state = self.state_manager.evaluate(message, self.bot.user)
-        self.last_state = state
-        self.last_user_id = message.author.id
+        print("[AI_CHAT] mensagem recebida:", message.content)
+
+        # decisão única
+        state = self.state.evaluate(message, self.bot.user)
 
         if not state.should_respond:
             return
 
-        self.buffer.append({
-            "author_id": message.author.id,
-            "author_display": message.author.display_name,
-            "content": message.content,
-            "ts": now_ts()
-        })
+        # adiciona ao buffer
+        self.buffer.add_user_message(
+            f"{message.author.display_name}: {message.content}"
+        )
 
-        if not self.buffer_task or self.buffer_task.done():
-            self.buffer_task = asyncio.create_task(self.process_buffer())
+        # evita corrida
+        if self.processing:
+            return
+
+        self.processing = True
+
+        # pequeno atraso humano
+        await asyncio.sleep(random.uniform(0.8, 2.0))
+
+        try:
+            await self._generate_and_send(message.channel)
+        finally:
+            self.processing = False
+
+    # ─────────────────────────────
+    # RESPOSTA
+    # ─────────────────────────────
+
+    async def _generate_and_send(self, channel: discord.TextChannel):
+        if self.buffer.is_empty():
+            return
+
+        entries = [
+            {
+                "author_display": "chat",
+                "content": m["content"]
+            }
+            for m in self.buffer.get_messages()
+        ]
+
+        prompt = build_prompt(entries)
+
+        try:
+            response = await self.engine.generate_response(entries)
+        except Exception as e:
+            print("[AI_CHAT] erro ao gerar resposta:", e)
+            return
+
+        if not response:
+            return
+
+        await channel.send(response)
+
+        self.buffer.add_assistant_message(response)
+        self.last_response_ts = now_ts()
+
+    # ─────────────────────────────
+    # STATUS
+    # ─────────────────────────────
+
+    @commands.command(name="ai_status")
+    @commands.has_permissions(administrator=True)
+    async def ai_status(self, ctx: commands.Context):
+        await ctx.send(
+            f"🧠 AI ativo\n"
+            f"Buffer: {self.buffer.size()} msgs\n"
+            f"Última resposta: <t:{int(self.last_response_ts)}:R>"
+            if self.last_response_ts else "—"
+        )
 
 
-async def setup(bot):
+async def setup(bot: commands.Bot):
     await bot.add_cog(AIChatCog(bot))
