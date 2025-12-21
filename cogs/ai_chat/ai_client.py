@@ -1,6 +1,7 @@
 import asyncio
 from typing import List
 
+
 class AIClient:
     def __init__(
         self,
@@ -17,41 +18,33 @@ class AIClient:
         self.max_tokens = max_tokens
         self.temperature = temperature
 
-        self.client = None  # ⬅️ NÃO cria aqui
+        self.client = None
         self.last_model_used = None
         self.last_error = None
 
     # ----------------------
-    # Cliente lazy (cria só quando precisar)
+    # Cliente lazy
     # ----------------------
     def _get_client(self):
         if self.client is None:
-            from openai import OpenAI  # import tardio
+            from openai import OpenAI
             self.client = OpenAI(api_key=self.api_key)
         return self.client
 
     # ----------------------
-    # Chamada síncrona
+    # Chamada síncrona (BLOQUEANTE)
     # ----------------------
     def _sync_call(self, model: str, messages: List[dict]) -> str:
-    client = self._get_client()
+        client = self._get_client()
 
-    prompt = "\n".join(
-        f"{m['role']}: {m['content']}" for m in messages
-    )
+        response = client.responses.create(
+            model=model,
+            input=messages,
+            max_output_tokens=self.max_tokens,
+            temperature=self.temperature
+        )
 
-    response = client.responses.create(
-        model=model,
-        input=prompt,
-        max_output_tokens=self.max_tokens,
-        temperature=self.temperature
-    )
-
-    text = getattr(response, "output_text", None)
-    if not text:
-        raise RuntimeError("Resposta vazia da API")
-
-    return text.strip()
+        return response.output_text.strip()
 
     # ----------------------
     # Async com fallback
