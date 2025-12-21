@@ -34,15 +34,24 @@ class AIClient:
     # Chamada síncrona
     # ----------------------
     def _sync_call(self, model: str, messages: List[dict]) -> str:
-        client = self._get_client()
+    client = self._get_client()
 
-        response = client.responses.create(
-            model=model,
-            input=messages,
-            max_output_tokens=self.max_tokens,
-            temperature=self.temperature
-        )
-        return response.output_text.strip()
+    prompt = "\n".join(
+        f"{m['role']}: {m['content']}" for m in messages
+    )
+
+    response = client.responses.create(
+        model=model,
+        input=prompt,
+        max_output_tokens=self.max_tokens,
+        temperature=self.temperature
+    )
+
+    text = getattr(response, "output_text", None)
+    if not text:
+        raise RuntimeError("Resposta vazia da API")
+
+    return text.strip()
 
     # ----------------------
     # Async com fallback
