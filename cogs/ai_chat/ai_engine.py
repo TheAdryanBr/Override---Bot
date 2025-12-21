@@ -1,19 +1,8 @@
-# cogs/ai_chat/ai_engine.py
 import asyncio
-import time
 from typing import List, Dict, Any, Optional
 
-from .openai import OpenAI
+from .ai_client import AIClient
 
-# ======================
-# CLIENTE OPENAI
-# ======================
-
-client_ai = OpenAI()
-
-# ======================
-# ENGINE (CÉREBRO)
-# ======================
 
 class AIEngine:
     def __init__(
@@ -23,12 +12,23 @@ class AIEngine:
         fallback_models: List[str],
         max_output_tokens: int = 200,
         temperature: float = 0.5,
+        api_key: Optional[str] = None,
     ):
         self.system_prompt = system_prompt
         self.primary_models = primary_models
         self.fallback_models = fallback_models
         self.max_output_tokens = max_output_tokens
         self.temperature = temperature
+
+        # 🔗 Cliente único (corrigido)
+        self.client = AIClient(
+            api_key=api_key or "SUA_KEY_AQUI",
+            system_prompt=system_prompt,
+            primary_models=primary_models,
+            fallback_models=fallback_models,
+            max_tokens=max_output_tokens,
+            temperature=temperature,
+        )
 
         self.current_model_in_use: Optional[str] = None
         self.recent_error: Optional[str] = None
@@ -41,48 +41,26 @@ class AIEngine:
         return self.primary_models + self.fallback_models
 
     # ----------------------
-    # Chamada OpenAI (thread)
-    # ----------------------
-
-    async def _call_openai(self, model: str, prompt: str) -> str:
-        def sync_call():
-            return client_ai.responses.create(
-                model=model,
-                input=prompt,
-                max_output_tokens=self.max_output_tokens,
-                temperature=self.temperature,
-            )
-
-        resp = await asyncio.to_thread(sync_call)
-
-        # proteção absoluta contra retorno vazio
-        text = getattr(resp, "output_text", None)
-        if not text:
-            raise RuntimeError("Resposta vazia da OpenAI")
-
-        return text.strip()
-
-    # ----------------------
-    # Fallback
+    # Chamada com fallback
     # ----------------------
 
     async def ask_with_fallback(self, prompt: str) -> str:
-        last_exc = None
+        try:
+            text = await self.client.ask([
+                {"role": "user", "content": prompt}
+            ])
 
-        for model in self.choose_model_order():
-            try:
-                self.current_model_in_use = model
-                text = await self._call_openai(model, prompt)
-                self.recent_error = None
-                return text
+            self.current_model_in_use = self.client.last_model_used
+            self.recent_error = None
 
-            except Exception as e:
-                last_exc = e
-                self.recent_error = f"{model}: {e}"
-                await asyncio.sleep(0.25)
+            if not text or not text.strip():
+                raise RuntimeError("Resposta vazia da IA")
 
-        # fallback final garantido
-        return "Tô meio lento agora, tenta de novo."
+            return text.strip()
+
+        except Exception as e:
+            self.recent_error = str(e)
+            return "Tô meio lento agora, tenta de novo."
 
     # ----------------------
     # Limpeza de texto
@@ -162,11 +140,9 @@ class AIEngine:
 
         raw = await self.ask_with_fallback(prompt)
 
-        # proteção final
         if not raw or not raw.strip():
             return "Fala aí."
 
-        # remove lixo no final
         if "\n[" in raw:
             lines = raw.strip().splitlines()
             if lines and "[" in lines[-1]:
