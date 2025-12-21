@@ -1,6 +1,5 @@
 print("[AI_CHAT] import iniciado")
 
-import time
 import random
 import asyncio
 from typing import List, Dict, Any, Optional
@@ -17,8 +16,6 @@ from .ai_client import AIClient
 # ─────────────────────────────
 COOLDOWN_MIN = 20
 COOLDOWN_MAX = 40
-END_CONVO_MIN = 120
-END_CONVO_MAX = 240
 BUFFER_DELAY = (1.5, 3.0)
 
 
@@ -36,6 +33,7 @@ class AIChatCog(commands.Cog):
         self.last_response_ts = 0.0
         self.last_response_text: Optional[str] = None
         self.last_state = None
+        self.last_user_id: Optional[int] = None
 
         self.state_manager = AIStateManager(
             owner_id=473962013031399425,
@@ -127,7 +125,7 @@ class AIChatCog(commands.Cog):
         )
 
     # ─────────────────────────────
-    # LISTENER (CORRIGIDO)
+    # LISTENER
     # ─────────────────────────────
 
     @commands.Cog.listener()
@@ -142,9 +140,12 @@ class AIChatCog(commands.Cog):
 
         state = self.state_manager.evaluate(message, self.bot.user)
         self.last_state = state
+        self.last_user_id = message.author.id
 
-        # 🔥 override ignora cooldown
+        # 🔥 override (ADM/Dono ou conversa ativa)
         if state.allow_override:
+            self.state_manager._activate(message.author.id)
+
             prompt = self.build_prompt(
                 [{
                     "author_display": message.author.display_name,
@@ -163,14 +164,16 @@ class AIChatCog(commands.Cog):
 
             return
 
-        # ⏳ cooldown normal
+        # ⏳ cooldown global do chat
         if now_ts() < self.cooldown_until:
             return
 
         if not state.should_respond:
             return
 
+        # sincroniza conversa
         self.active = True
+        self.state_manager._activate(message.author.id)
 
         self.buffer.append({
             "author_id": message.author.id,
@@ -189,6 +192,10 @@ class AIChatCog(commands.Cog):
     async def end_conversation(self):
         self.active = False
         self.buffer.clear()
+
+        if self.last_user_id:
+            self.state_manager.end_conversation(self.last_user_id)
+
         self.cooldown_until = now_ts() + random.randint(
             COOLDOWN_MIN, COOLDOWN_MAX
         )
