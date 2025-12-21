@@ -1,6 +1,5 @@
 # ai_state.py
 import time
-from typing import Optional
 
 
 class AIState:
@@ -35,18 +34,10 @@ class AIStateManager:
         self.active_conversations = set()
         self.last_interaction = {}
 
-    # ─────────────────────────────
-    # UTIL
-    # ─────────────────────────────
-
     def is_admin(self, member):
         if member.id == self.owner_id:
             return True
         return any(role.id == self.admin_role_id for role in member.roles)
-
-    # ─────────────────────────────
-    # CORE
-    # ─────────────────────────────
 
     def evaluate(self, message, bot_user):
         user_id = message.author.id
@@ -56,7 +47,6 @@ class AIStateManager:
         mentioned = bot_user in message.mentions
         in_conversation = user_id in self.active_conversations
 
-        # 🧠 Perfil do usuário
         patience = 1
         tone = "normal"
 
@@ -66,64 +56,27 @@ class AIStateManager:
                 patience = profile.get("patience", 1)
                 tone = profile.get("tone_bias", "normal")
 
-                if profile.get("last_emotion") == "impaciente":
-                    tone = "seco"
-                    patience = min(patience + 1, 4)
-
-        # 🔒 ADM sempre pode iniciar com mention
+        # ADM inicia com mention
         if is_admin and mentioned:
             self._activate(user_id)
-            return AIState(
-                True,
-                "admin_mention",
-                allow_override=True,
-                patience_level=patience,
-                tone=tone
-            )
+            return AIState(True, "admin_mention", True, patience, tone)
 
-        # 🔒 Usuário comum inicia conversa com mention
+        # Usuário comum inicia com mention
         if mentioned and not in_conversation:
             self._activate(user_id)
-            return AIState(
-                True,
-                "user_mention_start",
-                patience_level=patience,
-                tone=tone
-            )
+            return AIState(True, "user_mention", False, patience, tone)
 
-        # 🔓 Conversa ativa → ignora cooldown
+        # Conversa ativa → sempre responde
         if in_conversation:
             self._touch(user_id)
-            return AIState(
-                True,
-                "conversation_active",
-                allow_override=True,
-                patience_level=patience,
-                tone=tone
-            )
+            return AIState(True, "conversation_active", True, patience, tone)
 
-        # 🔒 Cooldown (usuário comum fora de conversa)
+        # Cooldown fora de conversa
         last = self.last_interaction.get(user_id, 0)
-        if not is_admin:
-            if now - last < self.cooldown:
-                return AIState(
-                    False,
-                    "cooldown",
-                    patience_level=patience,
-                    tone=tone
-                )
+        if not is_admin and (now - last) < self.cooldown:
+            return AIState(False, "cooldown", False, patience, tone)
 
-        # 🚫 Fora de conversa e sem mention
-        return AIState(
-            False,
-            "not_in_conversation",
-            patience_level=patience,
-            tone=tone
-        )
-
-    # ─────────────────────────────
-    # STATE CONTROL
-    # ─────────────────────────────
+        return AIState(False, "ignore", False, patience, tone)
 
     def _activate(self, user_id):
         self.active_conversations.add(user_id)
