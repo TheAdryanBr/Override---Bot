@@ -85,12 +85,11 @@ class AIChatCog(commands.Cog):
 
         await self.send_response(response)
         await self.end_conversation()
-        
-        print("CANAL OBJ:", channel)
-        
+
     async def send_response(self, response: str):
         channel = self.bot.get_channel(CHANNEL_MAIN)
         if not channel:
+            print("[AI_CHAT] CHANNEL_MAIN inválido ou não encontrado")
             return
 
         await channel.send(response)
@@ -132,9 +131,6 @@ class AIChatCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
-        print("[AI_CHAT] on_message:", message.content)
-        print("CANAL RECEBIDO:", message.channel.id)
-        print("CHANNEL_MAIN:", CHANNEL_MAIN)
         if message.author.bot:
             return
 
@@ -145,10 +141,8 @@ class AIChatCog(commands.Cog):
         self.last_state = state
         self.last_user_id = message.author.id
 
-        # 🔥 override (ADM/Dono ou conversa ativa)
+        # 🔥 override (ADM / dono / conversa ativa)
         if state.allow_override:
-            self.state_manager._activate(message.author.id)
-
             prompt = self.build_prompt(
                 [{
                     "author_display": message.author.display_name,
@@ -164,19 +158,16 @@ class AIChatCog(commands.Cog):
                 await self.send_response(response)
             except Exception as e:
                 print(f"[AIChat] Erro override: {e}")
-
             return
 
-        # ⏳ cooldown global do chat
+        # ⏳ cooldown global
         if now_ts() < self.cooldown_until:
             return
 
         if not state.should_respond:
             return
 
-        # sincroniza conversa
         self.active = True
-        self.state_manager._activate(message.author.id)
 
         self.buffer.append({
             "author_id": message.author.id,
