@@ -131,7 +131,8 @@ class AIChatCog(commands.Cog):
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         print("[AI_CHAT] on_message:", message.content)
-
+        print("CANAL RECEBIDO:", message.channel.id)
+        print("CHANNEL_MAIN:", CHANNEL_MAIN)
         if message.author.bot:
             return
 
