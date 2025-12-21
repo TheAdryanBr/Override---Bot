@@ -85,7 +85,9 @@ class AIChatCog(commands.Cog):
 
         await self.send_response(response)
         await self.end_conversation()
-
+        
+        print("CANAL OBJ:", channel)
+        
     async def send_response(self, response: str):
         channel = self.bot.get_channel(CHANNEL_MAIN)
         if not channel:
