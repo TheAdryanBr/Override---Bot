@@ -168,6 +168,10 @@ FALAS DE INSPIRAÇÃO (APENAS TOM)
 “Ele evita conversa direta.”
 
 “E mais uma vez, evita conversa direta.”
+
+ATIVACAO:
+- Responde automaticamente apenas no canal principal (ID: {channel_id}).
+- Em outros canais, responde so quando marcado por um ADM.
 '''.strip()
 
 
