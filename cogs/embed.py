@@ -45,52 +45,82 @@ class EmbedSender(commands.Cog):
             return
 
         await ctx.reply(
-            "📥 Envie até **3 mensagens** contendo JSON.\n"
-            "Digite **finalizar** quando terminar."
+            "📎 Envie **um arquivo `.json`** contendo os embeds.\n"
+            "O arquivo pode ser grande.\n"
+            "Você tem **3 minutos**."
         )
 
-        collected_embeds: list[discord.Embed] = []
-
-        MAX_JSON_MESSAGES = 3
-        TIMEOUT = 180  # segundos
-        EMBEDS_PER_MESSAGE = 10
-        DELAY = 1.2
-
         def check(m: discord.Message):
-            return m.author == ctx.author and m.channel == ctx.channel
+            return m.author == ctx.author and m.channel == ctx.channel and m.attachments
 
-        for _ in range(MAX_JSON_MESSAGES):
-            try:
-                msg = await self.bot.wait_for("message", check=check, timeout=TIMEOUT)
-            except asyncio.TimeoutError:
-                await ctx.reply("⏰ Tempo esgotado. Operação cancelada.")
-                return
+        try:
+            msg = await self.bot.wait_for("message", check=check, timeout=180)
+        except asyncio.TimeoutError:
+            await ctx.reply("⏰ Tempo esgotado. Operação cancelada.")
+            return
 
-            if msg.content.lower().strip() == "finalizar":
-                break
+        attachment = msg.attachments[0]
 
-            try:
-                data = json.loads(msg.content)
-            except json.JSONDecodeError:
-                await ctx.reply("❌ JSON inválido. Operação cancelada.")
-                return
+        if not attachment.filename.lower().endswith(".json"):
+            await ctx.reply("❌ O arquivo precisa ser `.json`.")
+            return
 
-            embeds = self._parse_embeds(data)
-            if not embeds:
-                await ctx.reply("❌ Nenhum embed encontrado nesse JSON.")
-                return
+        try:
+            raw = await attachment.read()
+            data = json.loads(raw.decode("utf-8"))
+        except Exception:
+            await ctx.reply("❌ Falha ao ler ou interpretar o JSON.")
+            return
 
-            collected_embeds.extend(embeds)
+        embeds = self._parse_embeds(data)
 
-        if not collected_embeds:
-            await ctx.reply("❌ Nenhum embed para enviar.")
+        if not embeds:
+            await ctx.reply("❌ Nenhum embed encontrado no JSON.")
+            return
+
+        # -----------------------------
+        # Preview
+        # -----------------------------
+        EMBEDS_PER_MESSAGE = 10
+        messages_needed = (len(embeds) + EMBEDS_PER_MESSAGE - 1) // EMBEDS_PER_MESSAGE
+
+        preview = discord.Embed(
+            title="📋 Preview do envio",
+            description=(
+                f"📦 **Embeds encontrados:** {len(embeds)}\n"
+                f"✉️ **Mensagens necessárias:** {messages_needed}\n"
+                f"📍 **Canal destino:** {channel.mention}\n\n"
+                "Digite **confirmar** para enviar ou **cancelar** para abortar."
+            ),
+            color=0xFAA61A
+        )
+
+        await ctx.reply(embed=preview)
+
+        def confirm_check(m: discord.Message):
+            return (
+                m.author == ctx.author
+                and m.channel == ctx.channel
+                and m.content.lower() in ("confirmar", "cancelar")
+            )
+
+        try:
+            confirm = await self.bot.wait_for("message", check=confirm_check, timeout=60)
+        except asyncio.TimeoutError:
+            await ctx.reply("⏰ Confirmação não recebida. Cancelado.")
+            return
+
+        if confirm.content.lower() == "cancelar":
+            await ctx.reply("❌ Envio cancelado.")
             return
 
         # -----------------------------
         # Envio controlado
         # -----------------------------
-        for i in range(0, len(collected_embeds), EMBEDS_PER_MESSAGE):
-            chunk = collected_embeds[i:i + EMBEDS_PER_MESSAGE]
+        DELAY = 1.2
+
+        for i in range(0, len(embeds), EMBEDS_PER_MESSAGE):
+            chunk = embeds[i:i + EMBEDS_PER_MESSAGE]
             await channel.send(embeds=chunk)
             await asyncio.sleep(DELAY)
 
@@ -98,8 +128,7 @@ class EmbedSender(commands.Cog):
 
 
 # -----------------------------
-# Setup do Cog
+# Setup
 # -----------------------------
 async def setup(bot):
     await bot.add_cog(EmbedSender(bot))
-
