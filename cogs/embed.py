@@ -1,10 +1,11 @@
 # cogs/embed.py
 import json
-import io
+import asyncio
 import discord
 from discord.ext import commands
 
-MAX_PARTS = 3  # até 3 mensagens/arquivos
+MAX_PARTS = 3  # até 3 embeds por envio
+
 
 class EmbedConfirmView(discord.ui.View):
     def __init__(self, embeds: list[discord.Embed], channel_id: int):
@@ -24,12 +25,10 @@ class EmbedConfirmView(discord.ui.View):
     ):
         await interaction.response.defer(ephemeral=True)
 
-        # 🔒 Blindagem total contra interferência
         if interaction.user.bot:
             return
 
         try:
-            # 🔑 fetch_channel (NÃO get_channel)
             channel = await interaction.client.fetch_channel(self.channel_id)
         except discord.NotFound:
             await interaction.followup.send(
@@ -44,14 +43,16 @@ class EmbedConfirmView(discord.ui.View):
             )
             return
 
+        # 🔁 ENVIO THREAD-SAFE (ESSENCIAL NO SEU MAIN.PY)
         for emb in self.embeds:
-        async def _send():
-           await channel.send(embed=emb)
+            async def _send(e=emb):
+                await channel.send(embed=e)
 
-           await asyncio.run_coroutine_threadsafe(
-    _send(),
-    interaction.client.loop
-)
+            asyncio.run_coroutine_threadsafe(
+                _send(),
+                interaction.client.loop
+            )
+
         await interaction.followup.send(
             "✅ Embed(s) enviado(s) com sucesso!",
             ephemeral=True
@@ -112,7 +113,6 @@ class EmbedSender(commands.Cog):
             )
             return
 
-        # Aceita 1 embed ou lista
         if isinstance(payload, dict):
             payload = [payload]
 
