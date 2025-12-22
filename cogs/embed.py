@@ -1,17 +1,12 @@
-import json
-import asyncio
 import discord
 from discord.ext import commands
 
+TARGET_CHANNEL_ID = 123456789012345678  # ID DO CANAL ONDE O EMBED VAI
 
-# =============================
-# View de confirmação
-# =============================
-class ConfirmView(discord.ui.View):
+class EmbedConfirmView(discord.ui.View):
     def __init__(self, author_id: int):
-        super().__init__(timeout=60)
+        super().__init__(timeout=None)
         self.author_id = author_id
-        self.confirmed: bool | None = None
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.author_id:
@@ -22,143 +17,73 @@ class ConfirmView(discord.ui.View):
             return False
         return True
 
-    @discord.ui.button(label="Confirmar", style=discord.ButtonStyle.green)
-    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
-        self.confirmed = True
-        await interaction.response.edit_message(
-            content="✅ Envio confirmado. Processando...",
-            view=None
+    @discord.ui.button(
+        label="✅ Confirmar",
+        style=discord.ButtonStyle.success,
+        custom_id="embed_confirm_btn"
+    )
+    async def confirm(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        await interaction.response.defer(ephemeral=True)
+
+        channel = interaction.client.get_channel(TARGET_CHANNEL_ID)
+        if not channel:
+            await interaction.followup.send(
+                "❌ Canal de destino não encontrado.",
+                ephemeral=True
+            )
+            return
+
+        embed = discord.Embed(
+            title="📢 Embed enviado com sucesso",
+            description="Este embed foi confirmado via botão.",
+            color=discord.Color.green()
+        )
+
+        await channel.send(embed=embed)
+
+        await interaction.followup.send(
+            "✅ Embed enviado com sucesso!",
+            ephemeral=True
+        )
+
+        self.stop()
+
+    @discord.ui.button(
+        label="❌ Cancelar",
+        style=discord.ButtonStyle.danger,
+        custom_id="embed_cancel_btn"
+    )
+    async def cancel(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button
+    ):
+        await interaction.response.send_message(
+            "❌ Envio cancelado.",
+            ephemeral=True
         )
         self.stop()
 
-    @discord.ui.button(label="Cancelar", style=discord.ButtonStyle.red)
-    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
-        self.confirmed = False
-        await interaction.response.edit_message(
-            content="❌ Envio cancelado.",
-            view=None
-        )
-        self.stop()
 
-
-# =============================
-# Cog principal
-# =============================
 class EmbedSender(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    # -----------------------------
-    # Helper: JSON -> Embeds
-    # -----------------------------
-    def _parse_embeds(self, data: dict) -> list[discord.Embed]:
-        embeds = []
-
-        for e in data.get("embeds", []):
-            embed = discord.Embed(
-                title=e.get("title"),
-                description=e.get("description"),
-                color=e.get("color")
-            )
-
-            if "footer" in e:
-                embed.set_footer(text=e["footer"].get("text"))
-
-            if "author" in e:
-                embed.set_author(name=e["author"].get("name"))
-
-            embeds.append(embed)
-
-        return embeds
-
-    # -----------------------------
-    # Comando principal
-    # -----------------------------
-    @commands.has_permissions(administrator=True)
-    @commands.command(name="sendjson")
-    async def sendjson(self, ctx: commands.Context, channel_id: int):
-        channel = ctx.guild.get_channel(channel_id)
-        if not channel:
-            await ctx.reply("❌ Canal não encontrado.")
-            return
-
-        await ctx.reply(
-            "📎 Envie **um arquivo `.json`** contendo os embeds.\n"
-            "Você tem **3 minutos**."
+    @commands.command(name="embedtest")
+    async def embedtest(self, ctx: commands.Context):
+        embed = discord.Embed(
+            title="⚠️ Confirmação necessária",
+            description="Deseja enviar o embed para o canal definido?",
+            color=discord.Color.orange()
         )
 
-        def check(m: discord.Message):
-            return (
-                m.author.id == ctx.author.id
-                and m.channel.id == ctx.channel.id
-                and m.attachments
-            )
-
-        try:
-            msg = await self.bot.wait_for("message", check=check, timeout=180)
-        except asyncio.TimeoutError:
-            await ctx.reply("⏰ Tempo esgotado.")
-            return
-
-        attachment = msg.attachments[0]
-
-        if not attachment.filename.lower().endswith(".json"):
-            await ctx.reply("❌ O arquivo precisa ser `.json`.")
-            return
-
-        try:
-            raw = await attachment.read()
-            data = json.loads(raw.decode("utf-8"))
-        except Exception:
-            await ctx.reply("❌ Erro ao ler o JSON.")
-            return
-
-        embeds = self._parse_embeds(data)
-
-        if not embeds:
-            await ctx.reply("❌ Nenhum embed encontrado.")
-            return
-
-        # -----------------------------
-        # Preview
-        # -----------------------------
-        EMBEDS_PER_MESSAGE = 10
-        messages_needed = (len(embeds) + EMBEDS_PER_MESSAGE - 1) // EMBEDS_PER_MESSAGE
-
-        preview = discord.Embed(
-            title="📋 Preview do envio",
-            description=(
-                f"📦 **Embeds:** {len(embeds)}\n"
-                f"✉️ **Mensagens:** {messages_needed}\n"
-                f"📍 **Canal:** {channel.mention}\n\n"
-                "Use os botões abaixo para confirmar ou cancelar."
-            ),
-            color=0xFAA61A
-        )
-
-        view = ConfirmView(ctx.author.id)
-        await ctx.reply(embed=preview, view=view)
-
-        await view.wait()
-
-        if view.confirmed is not True:
-            await ctx.reply("❌ Envio cancelado.")
-            return
-
-        # -----------------------------
-        # Envio controlado
-        # -----------------------------
-        DELAY = 1.2
-
-        for i in range(0, len(embeds), EMBEDS_PER_MESSAGE):
-            await channel.send(embeds=embeds[i:i + EMBEDS_PER_MESSAGE])
-            await asyncio.sleep(DELAY)
-
-        await ctx.reply("✅ Embeds enviados com sucesso.")
+        view = EmbedConfirmView(author_id=ctx.author.id)
+        await ctx.send(embed=embed, view=view)
 
 
-# =============================
-# Setup do cog (OBRIGATÓRIO)
-# =============================
 async def setup(bot: commands.Bot):
     await bot.add_cog(EmbedSender(bot))
