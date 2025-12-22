@@ -45,8 +45,13 @@ class EmbedConfirmView(discord.ui.View):
             return
 
         for emb in self.embeds:
-            await channel.send(embed=emb)
+        async def _send():
+           await channel.send(embed=emb)
 
+           await asyncio.run_coroutine_threadsafe(
+    _send(),
+    interaction.client.loop
+)
         await interaction.followup.send(
             "✅ Embed(s) enviado(s) com sucesso!",
             ephemeral=True
