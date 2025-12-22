@@ -1,3 +1,4 @@
+# cogs/ai_chat/ai_chat.py
 import asyncio
 import random
 from typing import Optional
