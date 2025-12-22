@@ -1,5 +1,3 @@
-print("[AI_CHAT] import iniciado")
-
 import asyncio
 import random
 from typing import Optional
@@ -53,8 +51,6 @@ class AIChatCog(commands.Cog):
         if message.channel.id != CHANNEL_MAIN:
             return
 
-        print("[AI_CHAT] mensagem recebida:", message.content)
-
         # decisão única
         state = self.state.evaluate(message, self.bot.user)
 
@@ -101,7 +97,6 @@ class AIChatCog(commands.Cog):
         try:
             response = await self.engine.generate_response(entries)
         except Exception as e:
-            print("[AI_CHAT] erro ao gerar resposta:", e)
             return
 
         if not response:
