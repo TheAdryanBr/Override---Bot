@@ -4,6 +4,39 @@ import discord
 from discord.ext import commands
 
 
+# -----------------------------
+# View de confirmação
+# -----------------------------
+class ConfirmView(discord.ui.View):
+    def __init__(self, author_id: int, embeds: list[discord.Embed], channel: discord.TextChannel):
+        super().__init__(timeout=60)
+        self.author_id = author_id
+        self.embeds = embeds
+        self.channel = channel
+        self.confirmed = None
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.author_id:
+            await interaction.response.send_message(
+                "❌ Apenas quem executou o comando pode usar esses botões.",
+                ephemeral=True
+            )
+            return False
+        return True
+
+    @discord.ui.button(label="Confirmar", style=discord.ButtonStyle.green)
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.confirmed = True
+        await interaction.response.defer()
+        self.stop()
+
+    @discord.ui.button(label="Cancelar", style=discord.ButtonStyle.red)
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.confirmed = False
+        await interaction.response.defer()
+        self.stop()
+
+
 class EmbedSender(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -16,17 +49,15 @@ class EmbedSender(commands.Cog):
 
         for e in data.get("embeds", []):
             embed = discord.Embed(
+                title=e.get("title"),
                 description=e.get("description"),
                 color=e.get("color")
             )
 
-            if "title" in e:
-                embed.title = e["title"]
-
-            if "footer" in e and isinstance(e["footer"], dict):
+            if "footer" in e:
                 embed.set_footer(text=e["footer"].get("text"))
 
-            if "author" in e and isinstance(e["author"], dict):
+            if "author" in e:
                 embed.set_author(name=e["author"].get("name"))
 
             embeds.append(embed)
@@ -45,18 +76,21 @@ class EmbedSender(commands.Cog):
             return
 
         await ctx.reply(
-            "📎 Envie **um arquivo `.json`** contendo os embeds.\n"
-            "O arquivo pode ser grande.\n"
+            "📎 Envie **um arquivo `.json`** com os embeds.\n"
             "Você tem **3 minutos**."
         )
 
         def check(m: discord.Message):
-            return m.author == ctx.author and m.channel == ctx.channel and m.attachments
+            return (
+                m.author.id == ctx.author.id
+                and m.channel.id == ctx.channel.id
+                and m.attachments
+            )
 
         try:
             msg = await self.bot.wait_for("message", check=check, timeout=180)
         except asyncio.TimeoutError:
-            await ctx.reply("⏰ Tempo esgotado. Operação cancelada.")
+            await ctx.reply("⏰ Tempo esgotado.")
             return
 
         attachment = msg.attachments[0]
@@ -69,17 +103,17 @@ class EmbedSender(commands.Cog):
             raw = await attachment.read()
             data = json.loads(raw.decode("utf-8"))
         except Exception:
-            await ctx.reply("❌ Falha ao ler ou interpretar o JSON.")
+            await ctx.reply("❌ Erro ao ler o JSON.")
             return
 
         embeds = self._parse_embeds(data)
 
         if not embeds:
-            await ctx.reply("❌ Nenhum embed encontrado no JSON.")
+            await ctx.reply("❌ Nenhum embed encontrado.")
             return
 
         # -----------------------------
-        # Preview
+        # Preview com botões
         # -----------------------------
         EMBEDS_PER_MESSAGE = 10
         messages_needed = (len(embeds) + EMBEDS_PER_MESSAGE - 1) // EMBEDS_PER_MESSAGE
@@ -87,31 +121,22 @@ class EmbedSender(commands.Cog):
         preview = discord.Embed(
             title="📋 Preview do envio",
             description=(
-                f"📦 **Embeds encontrados:** {len(embeds)}\n"
-                f"✉️ **Mensagens necessárias:** {messages_needed}\n"
-                f"📍 **Canal destino:** {channel.mention}\n\n"
-                "Digite **confirmar** para enviar ou **cancelar** para abortar."
+                f"📦 **Embeds:** {len(embeds)}\n"
+                f"✉️ **Mensagens:** {messages_needed}\n"
+                f"📍 **Canal:** {channel.mention}\n\n"
+                "Use os botões abaixo para confirmar ou cancelar."
             ),
             color=0xFAA61A
         )
 
-        await ctx.reply(embed=preview)
+        view = ConfirmView(ctx.author.id, embeds, channel)
+        preview_msg = await ctx.reply(embed=preview, view=view)
 
-        def confirm_check(m: discord.Message):
-            return (
-                m.author.id == ctx.author.id
-                and m.channel.id == ctx.channel.id
-                and m.content
-                and m.content.lower().strip() in ("confirmar", "cancelar")
-            )
+        await view.wait()
 
-        try:
-            confirm = await self.bot.wait_for("message", check=confirm_check, timeout=60)
-        except asyncio.TimeoutError:
-            await ctx.reply("⏰ Confirmação não recebida. Cancelado.")
-            return
+        await preview_msg.edit(view=None)
 
-        if confirm.content.lower() == "cancelar":
+        if view.confirmed is not True:
             await ctx.reply("❌ Envio cancelado.")
             return
 
@@ -121,8 +146,7 @@ class EmbedSender(commands.Cog):
         DELAY = 1.2
 
         for i in range(0, len(embeds), EMBEDS_PER_MESSAGE):
-            chunk = embeds[i:i + EMBEDS_PER_MESSAGE]
-            await channel.send(embeds=chunk)
+            await channel.send(embeds=embeds[i:i + EMBEDS_PER_MESSAGE])
             await asyncio.sleep(DELAY)
 
         await ctx.reply("✅ Embeds enviados com sucesso.")
