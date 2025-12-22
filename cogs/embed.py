@@ -99,9 +99,10 @@ class EmbedSender(commands.Cog):
 
         def confirm_check(m: discord.Message):
             return (
-                m.author == ctx.author
-                and m.channel == ctx.channel
-                and m.content.lower() in ("confirmar", "cancelar")
+                m.author.id == ctx.author.id
+                and m.channel.id == ctx.channel.id
+                and m.content
+                and m.content.lower().strip() in ("confirmar", "cancelar")
             )
 
         try:
