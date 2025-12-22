@@ -4,9 +4,9 @@ import discord
 from discord.ext import commands
 
 
-# -----------------------------
+# =============================
 # View de confirmação
-# -----------------------------
+# =============================
 class ConfirmView(discord.ui.View):
     def __init__(self, author_id: int):
         super().__init__(timeout=60)
@@ -16,7 +16,7 @@ class ConfirmView(discord.ui.View):
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.author_id:
             await interaction.response.send_message(
-                "❌ Apenas quem executou o comando pode usar.",
+                "❌ Apenas quem executou o comando pode usar esses botões.",
                 ephemeral=True
             )
             return False
@@ -40,19 +40,50 @@ class ConfirmView(discord.ui.View):
         )
         self.stop()
 
+
+# =============================
+# Cog principal
+# =============================
+class EmbedSender(commands.Cog):
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
+
+    # -----------------------------
+    # Helper: JSON -> Embeds
+    # -----------------------------
+    def _parse_embeds(self, data: dict) -> list[discord.Embed]:
+        embeds = []
+
+        for e in data.get("embeds", []):
+            embed = discord.Embed(
+                title=e.get("title"),
+                description=e.get("description"),
+                color=e.get("color")
+            )
+
+            if "footer" in e:
+                embed.set_footer(text=e["footer"].get("text"))
+
+            if "author" in e:
+                embed.set_author(name=e["author"].get("name"))
+
+            embeds.append(embed)
+
+        return embeds
+
     # -----------------------------
     # Comando principal
     # -----------------------------
     @commands.has_permissions(administrator=True)
     @commands.command(name="sendjson")
-    async def sendjson(self, ctx, channel_id: int):
+    async def sendjson(self, ctx: commands.Context, channel_id: int):
         channel = ctx.guild.get_channel(channel_id)
         if not channel:
             await ctx.reply("❌ Canal não encontrado.")
             return
 
         await ctx.reply(
-            "📎 Envie **um arquivo `.json`** com os embeds.\n"
+            "📎 Envie **um arquivo `.json`** contendo os embeds.\n"
             "Você tem **3 minutos**."
         )
 
@@ -89,7 +120,7 @@ class ConfirmView(discord.ui.View):
             return
 
         # -----------------------------
-        # Preview com botões
+        # Preview
         # -----------------------------
         EMBEDS_PER_MESSAGE = 10
         messages_needed = (len(embeds) + EMBEDS_PER_MESSAGE - 1) // EMBEDS_PER_MESSAGE
@@ -106,13 +137,12 @@ class ConfirmView(discord.ui.View):
         )
 
         view = ConfirmView(ctx.author.id)
-        preview_msg = await ctx.reply(embed=preview, view=view)
-
-        await view.wait()
+        await ctx.reply(embed=preview, view=view)
 
         await view.wait()
 
         if view.confirmed is not True:
+            await ctx.reply("❌ Envio cancelado.")
             return
 
         # -----------------------------
@@ -127,8 +157,8 @@ class ConfirmView(discord.ui.View):
         await ctx.reply("✅ Embeds enviados com sucesso.")
 
 
-# -----------------------------
-# Setup
-# -----------------------------
-async def setup(bot):
+# =============================
+# Setup do cog (OBRIGATÓRIO)
+# =============================
+async def setup(bot: commands.Bot):
     await bot.add_cog(EmbedSender(bot))
