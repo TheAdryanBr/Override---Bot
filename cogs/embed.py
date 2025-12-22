@@ -105,15 +105,14 @@ class ConfirmView(discord.ui.View):
             color=0xFAA61A
         )
 
-        view = ConfirmView(ctx.author.id, embeds, channel)
+        view = ConfirmView(ctx.author.id)
         preview_msg = await ctx.reply(embed=preview, view=view)
 
         await view.wait()
 
-        await preview_msg.edit(view=None)
+        await view.wait()
 
         if view.confirmed is not True:
-            await ctx.reply("❌ Envio cancelado.")
             return
 
         # -----------------------------
