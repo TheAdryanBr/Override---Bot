@@ -91,6 +91,7 @@ COGS = [
     "cogs.controle_owner",
     "cogs.autorole",
     "cogs.ai_chat",
+    "cogs.embed",
 ]
 
 # ===== EVENTO DE SYNC =====
