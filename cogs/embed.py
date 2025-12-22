@@ -8,17 +8,15 @@ from discord.ext import commands
 # View de confirmação
 # -----------------------------
 class ConfirmView(discord.ui.View):
-    def __init__(self, author_id: int, embeds: list[discord.Embed], channel: discord.TextChannel):
+    def __init__(self, author_id: int):
         super().__init__(timeout=60)
         self.author_id = author_id
-        self.embeds = embeds
-        self.channel = channel
-        self.confirmed = None
+        self.confirmed: bool | None = None
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.author_id:
             await interaction.response.send_message(
-                "❌ Apenas quem executou o comando pode usar esses botões.",
+                "❌ Apenas quem executou o comando pode usar.",
                 ephemeral=True
             )
             return False
@@ -27,42 +25,20 @@ class ConfirmView(discord.ui.View):
     @discord.ui.button(label="Confirmar", style=discord.ButtonStyle.green)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
         self.confirmed = True
-        await interaction.response.defer()
+        await interaction.response.edit_message(
+            content="✅ Envio confirmado. Processando...",
+            view=None
+        )
         self.stop()
 
     @discord.ui.button(label="Cancelar", style=discord.ButtonStyle.red)
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
         self.confirmed = False
-        await interaction.response.defer()
+        await interaction.response.edit_message(
+            content="❌ Envio cancelado.",
+            view=None
+        )
         self.stop()
-
-
-class EmbedSender(commands.Cog):
-    def __init__(self, bot):
-        self.bot = bot
-
-    # -----------------------------
-    # Helper: JSON -> Embeds
-    # -----------------------------
-    def _parse_embeds(self, data: dict) -> list[discord.Embed]:
-        embeds = []
-
-        for e in data.get("embeds", []):
-            embed = discord.Embed(
-                title=e.get("title"),
-                description=e.get("description"),
-                color=e.get("color")
-            )
-
-            if "footer" in e:
-                embed.set_footer(text=e["footer"].get("text"))
-
-            if "author" in e:
-                embed.set_author(name=e["author"].get("name"))
-
-            embeds.append(embed)
-
-        return embeds
 
     # -----------------------------
     # Comando principal
