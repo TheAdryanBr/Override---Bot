@@ -12,6 +12,18 @@ from .message_buffer import MessageBuffer
 from .ai_prompt import build_prompt
 from utils import CHANNEL_MAIN, now_ts
 
+LOW_EFFORT_PATTERNS = [
+    "faz pra mim",
+    "pode fazer",
+    "me ajuda",
+    "cria um",
+    "monta um",
+    "faz ai",
+]
+
+def should_auto_refuse(content: str) -> bool:
+    text = content.lower()
+    return any(p in text for p in LOW_EFFORT_PATTERNS)
 
 class AIChatCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -44,40 +56,55 @@ class AIChatCog(commands.Cog):
     # LISTENER
     # ─────────────────────────────
 
-    @commands.Cog.listener()
-    async def on_message(self, message: discord.Message):
-        if message.author.bot:
-            return
+   @commands.Cog.listener()
+async def on_message(self, message: discord.Message):
+    if message.author.bot:
+        return
 
-        if message.channel.id != CHANNEL_MAIN:
-            return
+    if message.channel.id != CHANNEL_MAIN:
+        return
 
-        # decisão única
-        state = self.state.evaluate(message, self.bot.user)
+    # decisão única
+    state = self.state.evaluate(message, self.bot.user)
 
-        if not state.should_respond:
-            return
+    if not state.should_respond:
+        return
 
-        # adiciona ao buffer
-        self.buffer.add_user_message(
-            author_id=message.author.id,
-            author_name=message.author.display_name,
-            content=message.content,
-       )
+    # ----------------------
+    # AUTO-RECUSA DO OVERRIDE
+    # ----------------------
+    if should_auto_refuse(message.content):
+        await message.channel.send(random.choice([
+            "Não.",
+            "Eu passo.",
+            "Agora não.",
+            "Isso aí não.",
+            "Nop.",
+            "Sai fora.",
+        ]))
+        return
 
-        # evita corrida
-        if self.processing:
-            return
+    # adiciona ao buffer
+    self.buffer.add_user_message(
+        author_id=message.author.id,
+        author_name=message.author.display_name,
+        content=message.content,
+    )
 
-        self.processing = True
+    # evita corrida
+    if self.processing:
+        return
 
-        # pequeno atraso humano
-        await asyncio.sleep(random.uniform(0.8, 2.0))
+    self.processing = True
 
-        try:
-            await self._generate_and_send(message.channel)
-        finally:
-            self.processing = False
+    # pequeno atraso humano
+    await asyncio.sleep(random.uniform(0.8, 2.0))
+
+    try:
+        await self._generate_and_send(message.channel)
+    finally:
+        self.processing = False
+
 
     # ─────────────────────────────
     # RESPOSTA
