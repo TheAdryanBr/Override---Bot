@@ -60,8 +60,10 @@ class AIChatCog(commands.Cog):
 
         # adiciona ao buffer
         self.buffer.add_user_message(
-            f"{message.author.display_name}: {message.content}"
-        )
+            author_id=message.author.id,
+            author_name=message.author.display_name,
+            content=message.content,
+       )
 
         # evita corrida
         if self.processing:
