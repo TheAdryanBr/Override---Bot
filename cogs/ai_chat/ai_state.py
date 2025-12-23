@@ -57,7 +57,7 @@ class AIStateManager:
     # Avaliação principal
     # ----------------------
 
-    def evaluate(self, message, bot_user) -> AIState:
+    def evaluate(self, message, bot_user, intent=None) -> AIState:
         user_id = message.author.id
         now = time.time()
 
