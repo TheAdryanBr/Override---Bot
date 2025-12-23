@@ -12,16 +12,13 @@ class AIState:
         patience_level: int = 1,
         tone: str = "normal",
         focused_user_id: Optional[int] = None,
-        focus_reason: Optional[str] = None,
     ):
         self.should_respond = should_respond
         self.reason = reason
         self.allow_override = allow_override
         self.patience_level = patience_level
         self.tone = tone
-
         self.focused_user_id = focused_user_id
-        self.focus_reason = focus_reason
 
 
 class AIStateManager:
@@ -30,7 +27,7 @@ class AIStateManager:
         owner_id: int,
         admin_role_id: int,
         cooldown: int = 30,
-        memory=None
+        memory=None,
     ):
         self.owner_id = owner_id
         self.admin_role_id = admin_role_id
@@ -40,21 +37,21 @@ class AIStateManager:
         self.active_conversations = set()
         self.last_interaction = {}
 
-        # foco por conversa
-        self.current_focus = {}
+        # quem chamou primeiro
+        self.current_focus: dict[int, int] = {}
 
-    # ----------------------
+    # ─────────────────────────────
     # Permissões
-    # ----------------------
+    # ─────────────────────────────
 
-    def is_admin(self, member):
+    def is_admin(self, member) -> bool:
         if member.id == self.owner_id:
             return True
         return any(role.id == self.admin_role_id for role in member.roles)
 
-    # ----------------------
-    # Avaliação principal
-    # ----------------------
+    # ─────────────────────────────
+    # Avaliação principal (Override)
+    # ─────────────────────────────
 
     def evaluate(self, message, bot_user, intent=None) -> AIState:
         user_id = message.author.id
@@ -76,11 +73,11 @@ class AIStateManager:
         content_lower = message.content.lower()
 
         # ─────────────────────────────
-        # 1) ADMIN com mention → força conversa
+        # 1) ADMIN com mention → força
         # ─────────────────────────────
         if is_admin and mentioned:
             self._activate(user_id)
-            self._set_focus(user_id, "admin_mention")
+            self._set_focus(user_id)
             return AIState(
                 should_respond=True,
                 reason="admin_mention",
@@ -88,15 +85,14 @@ class AIStateManager:
                 patience_level=patience,
                 tone=tone,
                 focused_user_id=user_id,
-                focus_reason="admin_mention"
             )
 
         # ─────────────────────────────
-        # 2) Mention direta inicia conversa
+        # 2) Mention direta inicia foco
         # ─────────────────────────────
-        if mentioned and not in_conversation:
+        if mentioned and not self.active_conversations:
             self._activate(user_id)
-            self._set_focus(user_id, "user_mention")
+            self._set_focus(user_id)
             return AIState(
                 should_respond=True,
                 reason="user_mention",
@@ -104,76 +100,74 @@ class AIStateManager:
                 patience_level=patience,
                 tone=tone,
                 focused_user_id=user_id,
-                focus_reason="user_mention"
             )
 
         # ─────────────────────────────
-        # 3) Conversa ativa → responde sempre
+        # 3) Conversa ativa
         # ─────────────────────────────
-        if in_conversation:
+        if self.active_conversations:
             self._touch(user_id)
-            focused = self.current_focus.get(user_id)
+
+            focus = self._get_focus()
+
+            # respeita cooldown humano
+            last = self.last_interaction.get("global", 0)
+            if (now - last) < self.cooldown:
+                return AIState(
+                    should_respond=False,
+                    reason="cooldown",
+                    allow_override=False,
+                    patience_level=patience,
+                    tone=tone,
+                    focused_user_id=focus,
+                )
+
+            self.last_interaction["global"] = now
+
             return AIState(
                 should_respond=True,
                 reason="conversation_active",
                 allow_override=True,
                 patience_level=patience,
                 tone=tone,
-                focused_user_id=focused,
-                focus_reason="conversation_active"
+                focused_user_id=focus,
             )
 
         # ─────────────────────────────
-        # 4) Tentativa indireta (vc, você, tu)
-        #    RARA e contextual (Override antigo)
+        # 4) Override indireto (raro)
         # ─────────────────────────────
-        indirect_call = any(
+        indirect = any(
             w in content_lower.split()
             for w in ("vc", "você", "tu")
         )
 
-        if indirect_call and not mentioned:
-            last = self.last_interaction.get(user_id, 0)
-            if (now - last) > self.cooldown * 3:
-                self._activate(user_id)
-                self._set_focus(user_id, "indirect_context")
-                return AIState(
-                    should_respond=True,
-                    reason="indirect_context",
-                    allow_override=False,
-                    patience_level=patience + 1,
-                    tone=tone,
-                    focused_user_id=user_id,
-                    focus_reason="indirect_context"
-                )
-
-        # ─────────────────────────────
-        # 5) Cooldown fora de conversa
-        # ─────────────────────────────
         last = self.last_interaction.get(user_id, 0)
-        if not is_admin and (now - last) < self.cooldown:
+        if indirect and not mentioned and (now - last) > self.cooldown * 3:
+            self._activate(user_id)
+            self._set_focus(user_id)
             return AIState(
-                should_respond=False,
-                reason="cooldown",
+                should_respond=True,
+                reason="indirect_override",
                 allow_override=False,
-                patience_level=patience,
-                tone=tone
+                patience_level=patience + 1,
+                tone=tone,
+                focused_user_id=user_id,
             )
 
         # ─────────────────────────────
-        # 6) Ignora
+        # 5) Ignora
         # ─────────────────────────────
         return AIState(
             should_respond=False,
             reason="ignore",
             allow_override=False,
             patience_level=patience,
-            tone=tone
+            tone=tone,
         )
 
-    # ----------------------
+    # ─────────────────────────────
     # Controle interno
-    # ----------------------
+    # ─────────────────────────────
 
     def _activate(self, user_id: int):
         self.active_conversations.add(user_id)
@@ -182,9 +176,14 @@ class AIStateManager:
     def _touch(self, user_id: int):
         self.last_interaction[user_id] = time.time()
 
-    def _set_focus(self, user_id: int, reason: str):
-        self.current_focus[user_id] = user_id
+    def _set_focus(self, user_id: int):
+        # só define se ainda não existir
+        if not self.current_focus:
+            self.current_focus["focus"] = user_id
 
-    def end_conversation(self, user_id: int):
-        self.active_conversations.discard(user_id)
-        self.current_focus.pop(user_id, None)
+    def _get_focus(self) -> Optional[int]:
+        return self.current_focus.get("focus")
+
+    def end_conversation(self):
+        self.active_conversations.clear()
+        self.current_focus.clear()
