@@ -28,8 +28,8 @@ class AIChatCog(commands.Cog):
 
         self.engine = AIEngine(
             system_prompt="",  # já incluso no ai_prompt
-            primary_models=["gpt-5.1", "gpt-5.1-mini"],
-            fallback_models=["gpt-4.1", "gpt-4o-mini"],
+            primary_models=["gpt-4.1"],
+            fallback_models=["gpt-4.1"]
         )
 
         self.buffer = MessageBuffer(max_messages=12)
