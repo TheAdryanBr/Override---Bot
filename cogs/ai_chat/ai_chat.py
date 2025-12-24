@@ -12,6 +12,11 @@ from .message_buffer import MessageBuffer
 from .ai_prompt import build_prompt
 from utils import CHANNEL_MAIN, now_ts
 
+
+# ======================
+# AUTO-RECUSA (FORA DA CLASSE)
+# ======================
+
 LOW_EFFORT_PATTERNS = [
     "faz pra mim",
     "pode fazer",
@@ -24,6 +29,11 @@ LOW_EFFORT_PATTERNS = [
 def should_auto_refuse(content: str) -> bool:
     text = content.lower()
     return any(p in text for p in LOW_EFFORT_PATTERNS)
+
+
+# ======================
+# COG
+# ======================
 
 class AIChatCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -39,9 +49,9 @@ class AIChatCog(commands.Cog):
         )
 
         self.engine = AIEngine(
-            system_prompt="",  # já incluso no ai_prompt
+            system_prompt="",  # incluso no ai_prompt
             primary_models=["gpt-4.1"],
-            fallback_models=["gpt-4.1"]
+            fallback_models=["gpt-4.1"],
         )
 
         self.buffer = MessageBuffer(max_messages=12)
@@ -56,55 +66,54 @@ class AIChatCog(commands.Cog):
     # LISTENER
     # ─────────────────────────────
 
-   @commands.Cog.listener()
-async def on_message(self, message: discord.Message):
-    if message.author.bot:
-        return
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message):
+        if message.author.bot:
+            return
 
-    if message.channel.id != CHANNEL_MAIN:
-        return
+        if message.channel.id != CHANNEL_MAIN:
+            return
 
-    # decisão única
-    state = self.state.evaluate(message, self.bot.user)
+        # decisão única
+        state = self.state.evaluate(message, self.bot.user)
 
-    if not state.should_respond:
-        return
+        if not state.should_respond:
+            return
 
-    # ----------------------
-    # AUTO-RECUSA DO OVERRIDE
-    # ----------------------
-    if should_auto_refuse(message.content):
-        await message.channel.send(random.choice([
-            "Não.",
-            "Eu passo.",
-            "Agora não.",
-            "Isso aí não.",
-            "Nop.",
-            "Sai fora.",
-        ]))
-        return
+        # ----------------------
+        # AUTO-RECUSA DO OVERRIDE
+        # ----------------------
+        if should_auto_refuse(message.content):
+            await message.channel.send(random.choice([
+                "Não.",
+                "Eu passo.",
+                "Agora não.",
+                "Isso aí não.",
+                "Nop.",
+                "Sai fora.",
+            ]))
+            return
 
-    # adiciona ao buffer
-    self.buffer.add_user_message(
-        author_id=message.author.id,
-        author_name=message.author.display_name,
-        content=message.content,
-    )
+        # adiciona ao buffer
+        self.buffer.add_user_message(
+            author_id=message.author.id,
+            author_name=message.author.display_name,
+            content=message.content,
+        )
 
-    # evita corrida
-    if self.processing:
-        return
+        # evita corrida
+        if self.processing:
+            return
 
-    self.processing = True
+        self.processing = True
 
-    # pequeno atraso humano
-    await asyncio.sleep(random.uniform(0.8, 2.0))
+        # atraso humano
+        await asyncio.sleep(random.uniform(0.8, 2.0))
 
-    try:
-        await self._generate_and_send(message.channel)
-    finally:
-        self.processing = False
-
+        try:
+            await self._generate_and_send(message.channel)
+        finally:
+            self.processing = False
 
     # ─────────────────────────────
     # RESPOSTA
@@ -123,11 +132,9 @@ async def on_message(self, message: discord.Message):
             if m["role"] == "user"
         ]
 
-        prompt = build_prompt(entries)
-
         try:
             response = await self.engine.generate_response(entries)
-        except Exception as e:
+        except Exception:
             return
 
         if not response:
@@ -146,10 +153,13 @@ async def on_message(self, message: discord.Message):
     @commands.has_permissions(administrator=True)
     async def ai_status(self, ctx: commands.Context):
         await ctx.send(
-            f"🧠 AI ativo\n"
-            f"Buffer: {self.buffer.size()} msgs\n"
-            f"Última resposta: <t:{int(self.last_response_ts)}:R>"
-            if self.last_response_ts else "—"
+            (
+                f"🧠 AI ativo\n"
+                f"Buffer: {self.buffer.size()} msgs\n"
+                f"Última resposta: <t:{int(self.last_response_ts)}:R>"
+            )
+            if self.last_response_ts
+            else "—"
         )
 
 
