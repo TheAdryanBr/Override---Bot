@@ -124,14 +124,22 @@ class AIChatCog(commands.Cog):
         if self.buffer.is_empty():
             return
 
-        entries = [
-            {
-             "author_display": m.get("author_name", "chat"),
-             "content": m["content"]
-            }
-            for m in self.buffer.get_messages()
-            if m["role"] == "user"
-        ]
+        entries = []
+for m in self.buffer.get_messages():
+    if m["role"] != "user":
+        continue
+
+    content = m["content"]
+
+    # remove prefixes fantasmas
+    for prefix in ("the:", "chat:", "assistant:", "bot:"):
+        if content.lower().startswith(prefix):
+            content = content[len(prefix):].strip()
+
+    entries.append({
+        "author_display": m.get("author_name", "user"),
+        "content": content
+    })
 
         prompt = build_prompt(entries)
 
