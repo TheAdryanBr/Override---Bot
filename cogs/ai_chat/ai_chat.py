@@ -86,6 +86,11 @@ class AIChatCog(commands.Cog):
         if self.bot.user not in message.mentions and not state.allow_override:
             return
 
+        # bloqueia intromissão em conversa alheia
+        if not message.mentions and not self.state.is_conversation_active(message.channel.id):
+            return
+
+
         # auto-recusa seca
         if should_auto_refuse(message.content):
             await message.channel.send(random.choice([
