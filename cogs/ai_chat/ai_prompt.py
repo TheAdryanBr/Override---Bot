@@ -271,22 +271,15 @@ def detect_intent(texts: List[str]) -> str:
 # MONTAGEM DO PROMPT FINAL
 # ======================
 
-def build_prompt(entries: List[Dict[str, Any]]) -> str:
-    conversa = "\n".join(
-        f"{e['author_display']}: {e['content']}" for e in entries
-    )
-
-    texts = [e["content"] for e in entries]
-    intent = detect_intent(texts)
+def build_prompt(entries):
+    conversa = "\n".join(e["content"] for e in entries)
 
     prompt = (
         AI_SYSTEM_INSTRUCTIONS
         + "\n\nCONVERSA:\n"
         + conversa
         + "\n\n"
-        + "Com base nisso, gere UMA resposta curta (1–3 frases), "
-        + "natural, direta e fiel ao estilo do Override.\n"
-        + f"[INTENT: {intent}]\n"
+        + "Responda como Override. Curto, seco, natural.\n"
     )
 
     return prompt
