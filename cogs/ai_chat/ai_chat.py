@@ -1,7 +1,6 @@
 # cogs/ai_chat/ai_chat.py
 import asyncio
 import random
-import time
 
 import discord
 from discord.ext import commands
@@ -30,15 +29,16 @@ def should_auto_refuse(content: str) -> bool:
 
 def sanitize_response(text: str) -> str:
     FORBIDDEN_STARTS = (
-        "Claro",
-        "Com prazer",
-        "Fico feliz",
-        "Posso ajudar",
-        "Se precisar",
+        "claro",
+        "com prazer",
+        "fico feliz",
+        "posso ajudar",
+        "se precisar",
     )
 
+    lower = text.lower()
     for f in FORBIDDEN_STARTS:
-        if text.startswith(f):
+        if lower.startswith(f):
             cleaned = text[len(f):].lstrip(" ,.!?")
             return cleaned if cleaned else "Hm."
 
@@ -82,16 +82,17 @@ class AIChatCog(commands.Cog):
         if not state.should_respond:
             return
 
-        # corta intromissão
-        if self.bot.user not in message.mentions and not state.allow_override:
+        # ─────────────────────────
+        # BLOQUEIA INTROMISSÃO
+        # ─────────────────────────
+        last_user = self.buffer.get_last_user_id()
+
+        if last_user and last_user != message.author.id and not message.mentions:
             return
 
-        # bloqueia intromissão em conversa alheia
-        if not message.mentions and not self.state.is_conversation_active(message.channel.id):
-            return
-
-
-        # auto-recusa seca
+        # ─────────────────────────
+        # AUTO-RECUSA SECA
+        # ─────────────────────────
         if should_auto_refuse(message.content):
             await message.channel.send(random.choice([
                 "Não.",
@@ -103,13 +104,19 @@ class AIChatCog(commands.Cog):
             ]))
             return
 
-        self.buffer.add_user_message(message.content)
+        # ─────────────────────────
+        # BUFFER
+        # ─────────────────────────
+        self.buffer.add_user_message(
+            author_id=message.author.id,
+            author_name=message.author.display_name,
+            content=message.content,
+        )
 
         if self.processing:
             return
 
         self.processing = True
-
         await asyncio.sleep(random.uniform(0.8, 2.0))
 
         try:
@@ -125,26 +132,30 @@ class AIChatCog(commands.Cog):
             return
 
         entries = []
-for m in self.buffer.get_messages():
-    if m["role"] != "user":
-        continue
 
-    content = m["content"]
+        for m in self.buffer.get_messages():
+            if m["role"] != "user":
+                continue
 
-    # remove prefixes fantasmas
-    for prefix in ("the:", "chat:", "assistant:", "bot:"):
-        if content.lower().startswith(prefix):
-            content = content[len(prefix):].strip()
+            content = m["content"]
 
-    entries.append({
-        "author_display": m.get("author_name", "user"),
-        "content": content
-    })
+            # remove prefixes fantasmas
+            for prefix in ("the:", "chat:", "assistant:", "bot:"):
+                if content.lower().startswith(prefix):
+                    content = content[len(prefix):].strip()
+
+            entries.append({
+                "author_display": m.get("author_name", "user"),
+                "content": content
+            })
+
+        if not entries:
+            return
 
         prompt = build_prompt(entries)
 
         try:
-            response = await self.engine.generate_response(prompt)
+            response = await self.engine.generate_response(entries)
         except Exception:
             return
 
