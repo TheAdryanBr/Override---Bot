@@ -1,6 +1,7 @@
 # cogs/ai_chat/ai_chat.py
 import asyncio
 import random
+import time
 
 import discord
 from discord.ext import commands
@@ -11,10 +12,6 @@ from .message_buffer import MessageBuffer
 from .ai_prompt import build_prompt
 from utils import CHANNEL_MAIN, now_ts
 
-
-# ----------------------
-# AUTO-RECUSA (BAIXO ESFORÇO)
-# ----------------------
 
 LOW_EFFORT_PATTERNS = [
     "faz pra mim",
@@ -31,11 +28,27 @@ def should_auto_refuse(content: str) -> bool:
     return any(p in text for p in LOW_EFFORT_PATTERNS)
 
 
+def sanitize_response(text: str) -> str:
+    FORBIDDEN_STARTS = (
+        "Claro",
+        "Com prazer",
+        "Fico feliz",
+        "Posso ajudar",
+        "Se precisar",
+    )
+
+    for f in FORBIDDEN_STARTS:
+        if text.startswith(f):
+            cleaned = text[len(f):].lstrip(" ,.!?")
+            return cleaned if cleaned else "Hm."
+
+    return text
+
+
 class AIChatCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-        # CORE
         self.state = AIStateManager(
             owner_id=473962013031399425,
             admin_role_id=1213534921055010876,
@@ -44,8 +57,8 @@ class AIChatCog(commands.Cog):
 
         self.engine = AIEngine(
             system_prompt="",
-            primary_models=["gpt-4o"],
-            fallback_models=["gpt-4o-mini"],
+            primary_models=["gpt-4.1"],
+            fallback_models=["gpt-4.1"],
         )
 
         self.buffer = MessageBuffer(max_messages=12)
@@ -56,7 +69,6 @@ class AIChatCog(commands.Cog):
     # ─────────────────────────────
     # LISTENER
     # ─────────────────────────────
-
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         if message.author.bot:
@@ -70,7 +82,11 @@ class AIChatCog(commands.Cog):
         if not state.should_respond:
             return
 
-        # AUTO-RECUSA
+        # corta intromissão
+        if self.bot.user not in message.mentions and not state.allow_override:
+            return
+
+        # auto-recusa seca
         if should_auto_refuse(message.content):
             await message.channel.send(random.choice([
                 "Não.",
@@ -82,12 +98,7 @@ class AIChatCog(commands.Cog):
             ]))
             return
 
-        # BUFFER
-        self.buffer.add_user_message(
-            author_id=message.author.id,
-            author_name=message.author.display_name,
-            content=message.content,
-        )
+        self.buffer.add_user_message(message.content)
 
         if self.processing:
             return
@@ -104,27 +115,27 @@ class AIChatCog(commands.Cog):
     # ─────────────────────────────
     # RESPOSTA
     # ─────────────────────────────
-
     async def _generate_and_send(self, channel: discord.TextChannel):
         if self.buffer.is_empty():
             return
 
         entries = [
-            {
-                "author_display": m.get("author_name", "chat"),
-                "content": m["content"],
-            }
+            {"content": m["content"]}
             for m in self.buffer.get_messages()
             if m["role"] == "user"
         ]
 
+        prompt = build_prompt(entries)
+
         try:
-            response = await self.engine.generate_response(entries)
+            response = await self.engine.generate_response(prompt)
         except Exception:
             return
 
         if not response:
             return
+
+        response = sanitize_response(response)
 
         await channel.send(response)
 
@@ -134,7 +145,6 @@ class AIChatCog(commands.Cog):
     # ─────────────────────────────
     # STATUS
     # ─────────────────────────────
-
     @commands.command(name="ai_status")
     @commands.has_permissions(administrator=True)
     async def ai_status(self, ctx: commands.Context):
