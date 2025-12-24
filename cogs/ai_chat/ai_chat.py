@@ -125,7 +125,10 @@ class AIChatCog(commands.Cog):
             return
 
         entries = [
-            {"content": m["content"]}
+            {
+             "author_display": m.get("author_name", "chat"),
+             "content": m["content"]
+            }
             for m in self.buffer.get_messages()
             if m["role"] == "user"
         ]
