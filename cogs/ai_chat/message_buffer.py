@@ -1,4 +1,3 @@
-# message_buffer.py
 import time
 from collections import deque
 from typing import Deque, Dict, List
@@ -14,12 +13,12 @@ class MessageBuffer:
         self.merge_window = merge_window
         self._messages: Deque[Dict] = deque(maxlen=max_messages)
 
-     def get_last_user_id(self):
+    def get_last_user_id(self):
         for msg in reversed(self._messages):
             if msg.get("role") == "user":
                 return msg.get("author_id")
         return None
-         
+
     # ─────────────────────────────
     # Controle
     # ─────────────────────────────
