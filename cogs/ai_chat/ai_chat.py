@@ -87,7 +87,8 @@ class AIChatCog(commands.Cog):
         # ─────────────────────────
         last_user = self.buffer.get_last_user_id()
 
-        if last_user and last_user != message.author.id and not message.mentions:
+        # se já existe alguém na conversa, só ele continua
+        if last_user and last_user != message.author.id:
             return
 
         # ─────────────────────────
