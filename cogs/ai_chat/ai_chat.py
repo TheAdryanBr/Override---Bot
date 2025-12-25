@@ -1,6 +1,6 @@
+# cogs/ai_chat/ai_chat.py
 import asyncio
 import random
-import time
 
 import discord
 from discord.ext import commands
@@ -12,14 +12,14 @@ from .ai_prompt import build_prompt
 from utils import CHANNEL_MAIN, now_ts
 
 
-LOW_EFFORT_PATTERNS = [
+LOW_EFFORT_PATTERNS = (
     "faz pra mim",
     "pode fazer",
     "me ajuda",
     "cria um",
     "monta um",
     "faz ai",
-]
+)
 
 
 def should_auto_refuse(content: str) -> bool:
@@ -28,7 +28,7 @@ def should_auto_refuse(content: str) -> bool:
 
 
 def sanitize_response(text: str) -> str:
-    FORBIDDEN_STARTS = (
+    forbidden = (
         "claro",
         "com prazer",
         "fico feliz",
@@ -36,11 +36,11 @@ def sanitize_response(text: str) -> str:
         "se precisar",
     )
 
-    low = text.lower()
-    for f in FORBIDDEN_STARTS:
-        if low.startswith(f):
-            cut = text[len(f):].lstrip(" ,.!?")
-            return cut if cut else "Hm."
+    lower = text.lower()
+    for f in forbidden:
+        if lower.startswith(f):
+            cleaned = text[len(f):].lstrip(" ,.!?")
+            return cleaned if cleaned else "Hm."
 
     return text
 
@@ -82,9 +82,9 @@ class AIChatCog(commands.Cog):
         if not state.should_respond:
             return
 
-        # se já existe conversa ativa, só o mesmo usuário continua
+        # bloqueia intromissão
         last_user = self.buffer.get_last_user_id()
-        if last_user and last_user != message.author.id:
+        if last_user and last_user != message.author.id and not message.mentions:
             return
 
         # auto-recusa seca
@@ -125,7 +125,6 @@ class AIChatCog(commands.Cog):
             return
 
         entries = []
-
         for m in self.buffer.get_messages():
             if m["role"] != "user":
                 continue
@@ -138,8 +137,10 @@ class AIChatCog(commands.Cog):
 
             entries.append({
                 "author_display": m.get("author_name", "user"),
-                "content": content
+                "content": content,
             })
+
+        prompt = build_prompt(entries)
 
         try:
             response = await self.engine.generate_response(entries)
