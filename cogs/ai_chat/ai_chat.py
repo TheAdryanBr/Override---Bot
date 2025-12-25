@@ -12,14 +12,14 @@ from .ai_prompt import build_prompt
 from utils import CHANNEL_MAIN, now_ts
 
 
-LOW_EFFORT_PATTERNS = (
+LOW_EFFORT_PATTERNS = [
     "faz pra mim",
     "pode fazer",
     "me ajuda",
     "cria um",
     "monta um",
     "faz ai",
-)
+]
 
 
 def should_auto_refuse(content: str) -> bool:
@@ -28,7 +28,7 @@ def should_auto_refuse(content: str) -> bool:
 
 
 def sanitize_response(text: str) -> str:
-    forbidden = (
+    FORBIDDEN_STARTS = (
         "claro",
         "com prazer",
         "fico feliz",
@@ -37,7 +37,7 @@ def sanitize_response(text: str) -> str:
     )
 
     lower = text.lower()
-    for f in forbidden:
+    for f in FORBIDDEN_STARTS:
         if lower.startswith(f):
             cleaned = text[len(f):].lstrip(" ,.!?")
             return cleaned if cleaned else "Hm."
@@ -82,12 +82,9 @@ class AIChatCog(commands.Cog):
         if not state.should_respond:
             return
 
-        # bloqueia intromissão
-        last_user = self.buffer.get_last_user_id()
-        if last_user and last_user != message.author.id and not message.mentions:
-            return
-
-        # auto-recusa seca
+        # ─────────────────────────
+        # AUTO-RECUSA SECA
+        # ─────────────────────────
         if should_auto_refuse(message.content):
             await message.channel.send(random.choice([
                 "Não.",
@@ -99,17 +96,17 @@ class AIChatCog(commands.Cog):
             ]))
             return
 
+        # ─────────────────────────
+        # BUFFER (forma compatível)
+        # ─────────────────────────
         self.buffer.add_user_message(
-            author_id=message.author.id,
-            author_name=message.author.display_name,
-            content=message.content,
+            f"{message.author.display_name}: {message.content}"
         )
 
         if self.processing:
             return
 
         self.processing = True
-
         await asyncio.sleep(random.uniform(0.8, 2.0))
 
         try:
@@ -124,23 +121,17 @@ class AIChatCog(commands.Cog):
         if self.buffer.is_empty():
             return
 
-        entries = []
-        for m in self.buffer.get_messages():
-            if m["role"] != "user":
-                continue
+        entries = [
+            {
+                "author_display": "chat",
+                "content": m["content"]
+            }
+            for m in self.buffer.get_messages()
+            if m["role"] == "user"
+        ]
 
-            content = m["content"]
-
-            for prefix in ("the:", "chat:", "assistant:", "bot:"):
-                if content.lower().startswith(prefix):
-                    content = content[len(prefix):].strip()
-
-            entries.append({
-                "author_display": m.get("author_name", "user"),
-                "content": content,
-            })
-
-        prompt = build_prompt(entries)
+        if not entries:
+            return
 
         try:
             response = await self.engine.generate_response(entries)
