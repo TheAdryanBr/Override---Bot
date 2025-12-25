@@ -1,6 +1,6 @@
-# cogs/ai_chat/ai_chat.py
 import asyncio
 import random
+import time
 
 import discord
 from discord.ext import commands
@@ -36,11 +36,11 @@ def sanitize_response(text: str) -> str:
         "se precisar",
     )
 
-    lower = text.lower()
+    low = text.lower()
     for f in FORBIDDEN_STARTS:
-        if lower.startswith(f):
-            cleaned = text[len(f):].lstrip(" ,.!?")
-            return cleaned if cleaned else "Hm."
+        if low.startswith(f):
+            cut = text[len(f):].lstrip(" ,.!?")
+            return cut if cut else "Hm."
 
     return text
 
@@ -82,18 +82,12 @@ class AIChatCog(commands.Cog):
         if not state.should_respond:
             return
 
-        # ─────────────────────────
-        # BLOQUEIA INTROMISSÃO
-        # ─────────────────────────
+        # se já existe conversa ativa, só o mesmo usuário continua
         last_user = self.buffer.get_last_user_id()
-
-        # se já existe alguém na conversa, só ele continua
         if last_user and last_user != message.author.id:
             return
 
-        # ─────────────────────────
-        # AUTO-RECUSA SECA
-        # ─────────────────────────
+        # auto-recusa seca
         if should_auto_refuse(message.content):
             await message.channel.send(random.choice([
                 "Não.",
@@ -105,9 +99,6 @@ class AIChatCog(commands.Cog):
             ]))
             return
 
-        # ─────────────────────────
-        # BUFFER
-        # ─────────────────────────
         self.buffer.add_user_message(
             author_id=message.author.id,
             author_name=message.author.display_name,
@@ -118,6 +109,7 @@ class AIChatCog(commands.Cog):
             return
 
         self.processing = True
+
         await asyncio.sleep(random.uniform(0.8, 2.0))
 
         try:
@@ -140,7 +132,6 @@ class AIChatCog(commands.Cog):
 
             content = m["content"]
 
-            # remove prefixes fantasmas
             for prefix in ("the:", "chat:", "assistant:", "bot:"):
                 if content.lower().startswith(prefix):
                     content = content[len(prefix):].strip()
@@ -149,11 +140,6 @@ class AIChatCog(commands.Cog):
                 "author_display": m.get("author_name", "user"),
                 "content": content
             })
-
-        if not entries:
-            return
-
-        prompt = build_prompt(entries)
 
         try:
             response = await self.engine.generate_response(entries)
