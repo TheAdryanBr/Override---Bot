@@ -1,13 +1,18 @@
-# main.py — CLEAN + FUNCTIONAL VERSION
+# main.py — CLEAN + FUNCTIONAL VERSION (RATE-LIMIT SAFE)
 import os
 import sys
 import traceback
 import uuid
 import threading
 import asyncio
+import logging
 
 import discord
 from discord.ext import commands
+
+# ===== LOGS (ajuda a detectar rate limit cedo) =====
+logging.basicConfig(level=logging.INFO)
+logging.getLogger("discord.http").setLevel(logging.WARNING)
 
 # ===== ENV HELPERS =====
 def _int_env(name, default):
@@ -69,13 +74,13 @@ os.environ["RUNNING_INSTANCE"] = "1"
 
 # ===== BOT INIT =====
 intents = discord.Intents.default()
-intents.message_content = True      # obrigatório pra ler mensagens (inclusive DM)
+intents.message_content = True
 intents.messages = True
-intents.dm_messages = True          # ← ESSA LINHA É A CHAVE PRA DM FUNCIONAR NO RENDER
+intents.dm_messages = True
 intents.guilds = True
 intents.guild_messages = True
-intents.members = True              # se você usa em algum cog (welcome, etc)
-intents.presences = True            # só se precisar (pode tirar se quiser)
+intents.members = True
+intents.presences = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -94,20 +99,36 @@ COGS = [
     "cogs.embed",
 ]
 
-# ===== EVENTO DE SYNC =====
+# ===== CONTROLE DE READY =====
+_bot_ready_once = False
+
+# ===== EVENTO DE READY =====
 @bot.event
 async def on_ready():
+    global _bot_ready_once
+    if _bot_ready_once:
+        return
+    _bot_ready_once = True
+
+    # Delay anti-pico
+    await asyncio.sleep(8)
+
     print(f"[LOGADO] {bot.user} está online!")
 
     print("📦 Cogs carregados:")
     for name in bot.cogs:
         print(" -", name)
 
-    try:
-        synced = await bot.tree.sync()
-        print(f"[SLASH] {len(synced)} comandos sincronizados.")
-    except Exception as e:
-        print("[SLASH ERRO]", e)
+    # ===== SYNC CONTROLADO =====
+    if os.getenv("SYNC_COMMANDS") == "1":
+        try:
+            print("[SLASH] Sincronizando comandos...")
+            synced = await bot.tree.sync()
+            print(f"[SLASH] {len(synced)} comandos sincronizados.")
+        except Exception as e:
+            print("[SLASH ERRO]", e)
+    else:
+        print("[SLASH] Sync ignorado (proteção de rate limit)")
 
     print(f"Bot iniciado como {bot.user} (ID {bot.user.id})")
 
