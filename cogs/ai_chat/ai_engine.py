@@ -1,4 +1,3 @@
-# cogs/ai_chat/ai_engine.py
 import asyncio
 import os
 from typing import List, Dict, Any, Optional
@@ -9,9 +8,12 @@ from openai import OpenAI
 # CLIENTE OPENAI
 # ======================
 
+OPENAI_KEY = os.getenv("OPENAI_API_KEY")
+
 client_ai = OpenAI(
-    api_key=os.getenv("OPENAI_API_KEY")
-)
+    api_key=OPENAI_KEY
+) if OPENAI_KEY else None
+
 
 # ======================
 # ENGINE (CÉREBRO)
@@ -23,8 +25,8 @@ class AIEngine:
         system_prompt: str,
         primary_models: List[str],
         fallback_models: List[str],
-        max_output_tokens: int = 200,
-        temperature: float = 0.5,
+        max_output_tokens: int = 180,
+        temperature: float = 0.6,
     ):
         self.system_prompt = system_prompt
         self.primary_models = primary_models
@@ -40,13 +42,22 @@ class AIEngine:
     # ----------------------
 
     def choose_model_order(self) -> List[str]:
-        return self.primary_models + self.fallback_models
+        seen = set()
+        ordered = []
+        for m in self.primary_models + self.fallback_models:
+            if m not in seen:
+                seen.add(m)
+                ordered.append(m)
+        return ordered
 
     # ----------------------
     # Chamada OpenAI (thread)
     # ----------------------
 
     async def _call_openai(self, model: str, prompt: str) -> str:
+        if not client_ai:
+            raise RuntimeError("OPENAI_API_KEY não configurada")
+
         def sync_call():
             return client_ai.responses.create(
                 model=model,
@@ -58,47 +69,39 @@ class AIEngine:
         resp = await asyncio.to_thread(sync_call)
 
         text = getattr(resp, "output_text", None)
-        if not text:
+        if not text or not text.strip():
             raise RuntimeError("Resposta vazia da OpenAI")
 
         return text.strip()
 
     # ----------------------
-    # Fallback
+    # Fallback controlado
     # ----------------------
 
     async def ask_with_fallback(self, prompt: str) -> str:
-        last_exc = None
-
         for model in self.choose_model_order():
             try:
                 self.current_model_in_use = model
-                text = await self._call_openai(model, prompt)
-                self.recent_error = None
-                return text
+                return await self._call_openai(model, prompt)
 
             except Exception as e:
-                last_exc = e
                 self.recent_error = str(e)
-                print("[AI_ENGINE] erro:", self.recent_error)
-                await asyncio.sleep(0.25)
+                print(f"[AI_ENGINE] falha no modelo {model}: {self.recent_error}")
+                await asyncio.sleep(0.4)
 
-        return "Tô meio lento agora, tenta de novo."
+        return "Agora não."
 
     # ----------------------
-    # Limpeza de texto
+    # Limpeza final
     # ----------------------
 
     def final_clean(self, text: str) -> str:
         t = text.strip()
 
-        if len(t) > 900:
-            t = t[:900].rstrip() + "..."
+        if len(t) > 800:
+            t = t[:800].rstrip() + "..."
 
-        if t.count(". ") > 1 and "\n" not in t:
-            t = t.replace(". ", ", ", 1)
-
-        return t.strip()
+        return t
 
     # ----------------------
     # Prompt builder
@@ -106,7 +109,7 @@ class AIEngine:
 
     def build_prompt(self, entries: List[Dict[str, Any]]) -> str:
         texto_chat = "\n".join(
-            f"{e['author_display']}: {e['content']}"
+            f"{e.get('author_display', 'user')}: {e.get('content', '')}"
             for e in entries
             if e.get("content")
         )
@@ -118,7 +121,7 @@ class AIEngine:
             self.system_prompt
             + "\n\nCONVERSA:\n"
             + texto_chat
-            + "\n\nGere UMA resposta curta (1–3 frases), natural e no tom correto.\n"
+            + "\n\nResponda como Override. Curto, seco, natural.\n"
         )
 
     # ----------------------
@@ -127,9 +130,10 @@ class AIEngine:
 
     async def generate_response(self, entries: List[Dict[str, Any]]) -> str:
         prompt = self.build_prompt(entries)
+
         raw = await self.ask_with_fallback(prompt)
 
-        if not raw or not raw.strip():
+        if not raw:
             return "Fala aí."
 
         return self.final_clean(raw)
