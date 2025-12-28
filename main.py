@@ -1,78 +1,59 @@
-# main.py — CLEAN + FUNCTIONAL VERSION (RATE-LIMIT SAFE)
+# main.py — STABLE / SINGLE-LOGIN / RENDER SAFE
 import os
 import sys
 import traceback
 import uuid
-import threading
 import asyncio
 import logging
+import threading
 
 import discord
 from discord.ext import commands
 
-# ===== LOGS (ajuda a detectar rate limit cedo) =====
+# ─────────────────────────────
+# LOGS
+# ─────────────────────────────
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("discord.http").setLevel(logging.WARNING)
 
-# ===== ENV HELPERS =====
-def _int_env(name, default):
-    v = os.environ.get(name)
-    if v is None:
-        return default
-    try: return int(v)
-    except:
-        try: return int(v.strip())
-        except: return default
-
+# ─────────────────────────────
+# TOKEN
+# ─────────────────────────────
 def _read_secret_file(paths):
     for p in paths:
         try:
             if os.path.isfile(p):
-                with open(p,"r") as f:
-                    s=f.read().strip()
-                    if s: return s
-        except: pass
+                with open(p, "r") as f:
+                    s = f.read().strip()
+                    if s:
+                        return s
+        except:
+            pass
     return None
 
-_secret_paths = [
-    "/etc/secrets/DISCORD_TOKEN",
-    "/etc/secrets/discord_token",
-    "/run/secrets/discord_token",
-    "/var/run/secrets/discord_token",
-    "./.env.discord"
-]
 
 TOKEN = (
-    os.getenv("DISCORD_TOKEN") or
-    os.getenv("TOKEN") or
-    _read_secret_file(_secret_paths)
+    os.getenv("DISCORD_TOKEN")
+    or os.getenv("TOKEN")
+    or _read_secret_file([
+        "/etc/secrets/DISCORD_TOKEN",
+        "/etc/secrets/discord_token",
+        "/run/secrets/discord_token",
+        "/var/run/secrets/discord_token",
+        "./.env.discord",
+    ])
 )
 
 if not TOKEN:
-    raise RuntimeError("❌ DISCORD_TOKEN não encontrado!")
+    raise RuntimeError("❌ DISCORD_TOKEN não encontrado")
 
 TOKEN = TOKEN.strip()
 if TOKEN.lower().startswith("bot "):
     TOKEN = TOKEN[4:].strip()
 
-# ===== CONFIGS =====
-REPORT_CHANNEL_ID = _int_env("REPORT_CHANNEL_ID", 0)
-ADMIN_ROLE_ID    = _int_env("ADMIN_ROLE_ID", 0)
-WELCOME_CHANNEL_ID = _int_env("WELCOME_CHANNEL_ID", 0)
-WELCOME_LOG_CHANNEL_ID = _int_env("WELCOME_LOG_CHANNEL_ID", 0)
-MEMBER_ROLE_ID = _int_env("MEMBER_ROLE_ID", 0)
-
-GUILD_ID = _int_env("GUILD_ID", 0)
-BOOSTER_ROLE_ID = _int_env("BOOSTER_ROLE_ID", 0)
-CUSTOM_BOOSTER_ROLE_ID = _int_env("CUSTOM_BOOSTER_ROLE_ID", BOOSTER_ROLE_ID)
-
-# ===== ANTI-MULTI INSTANCE =====
-if os.environ.get("RUNNING_INSTANCE") == "1":
-    print("⚠️ Instância já ativa. Abortando.")
-    sys.exit()
-os.environ["RUNNING_INSTANCE"] = "1"
-
-# ===== BOT INIT =====
+# ─────────────────────────────
+# INTENTS
+# ─────────────────────────────
 intents = discord.Intents.default()
 intents.message_content = True
 intents.messages = True
@@ -84,7 +65,9 @@ intents.presences = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ===== LISTA DE COGS =====
+# ─────────────────────────────
+# COGS
+# ─────────────────────────────
 COGS = [
     "cogs.boosters",
     "cogs.denuncias",
@@ -99,85 +82,77 @@ COGS = [
     "cogs.embed",
 ]
 
-# ===== CONTROLE DE READY =====
-_bot_ready_once = False
+# ─────────────────────────────
+# READY (UMA VEZ)
+# ─────────────────────────────
+_ready_once = False
 
-# ===== EVENTO DE READY =====
 @bot.event
 async def on_ready():
-    global _bot_ready_once
-    if _bot_ready_once:
+    global _ready_once
+    if _ready_once:
         return
-    _bot_ready_once = True
+    _ready_once = True
 
-    # Delay anti-pico
-    await asyncio.sleep(8)
+    await asyncio.sleep(5)
 
-    print(f"[LOGADO] {bot.user} está online!")
-
+    print(f"[LOGADO] {bot.user} está online")
     print("📦 Cogs carregados:")
     for name in bot.cogs:
         print(" -", name)
 
-    # ===== SYNC CONTROLADO =====
+    # Proteção de sync
     if os.getenv("SYNC_COMMANDS") == "0":
         try:
-            print("[SLASH] Sincronizando comandos...")
             synced = await bot.tree.sync()
-            print(f"[SLASH] {len(synced)} comandos sincronizados.")
+            print(f"[SLASH] {len(synced)} comandos sincronizados")
         except Exception as e:
             print("[SLASH ERRO]", e)
     else:
-        print("[SLASH] Sync ignorado (proteção de rate limit)")
+        print("[SLASH] Sync ignorado")
 
-    print(f"Bot iniciado como {bot.user} (ID {bot.user.id})")
-
-# ===== CARREGAMENTO DOS COGS =====
+# ─────────────────────────────
+# LOAD COGS
+# ─────────────────────────────
 async def load_all_cogs():
     for cog in COGS:
-        print(f"[DEBUG] Tentando carregar: {cog}")
         try:
+            print(f"[DEBUG] Carregando {cog}")
             await bot.load_extension(cog)
-            print(f"[COG] Carregado: {cog}")
+            print(f"[COG] OK: {cog}")
         except Exception as e:
-            print(f"[COG ERRO] {cog}: {e}")
+            print(f"[COG ERRO] {cog}")
             traceback.print_exc()
 
-# ===== THREAD DO BOT =====
-def _start_bot_thread():
-    async def runner():
-        await load_all_cogs()
-        await bot.start(TOKEN)
+# ─────────────────────────────
+# FLASK KEEP ALIVE (THREAD)
+# ─────────────────────────────
+def start_keep_alive():
+    try:
+        from keep_alive import app, serve_foreground
+        port = int(os.environ.get("PORT", 8080))
+        serve_foreground(app, port=port)
+    except Exception:
+        traceback.print_exc()
 
-    def thread_target():
-        try:
-            asyncio.run(runner())
-        except Exception as e:
-            print("❌ Erro ao iniciar bot:", type(e).__name__, "-", e)
-            traceback.print_exc()
+# ─────────────────────────────
+# MAIN
+# ─────────────────────────────
+async def main():
+    await load_all_cogs()
+    await bot.start(TOKEN)
 
-    t = threading.Thread(target=thread_target, daemon=True)
-    t.start()
-
-# ===== EXPOSE CONFIG =====
-bot.MAIN_CONFIG = {
-    "REPORT_CHANNEL_ID": REPORT_CHANNEL_ID,
-    "ADMIN_ROLE_ID": ADMIN_ROLE_ID,
-    "WELCOME_CHANNEL_ID": WELCOME_CHANNEL_ID,
-    "WELCOME_LOG_CHANNEL_ID": WELCOME_LOG_CHANNEL_ID,
-    "MEMBER_ROLE_ID": MEMBER_ROLE_ID,
-    "GUILD_ID": GUILD_ID,
-    "BOOSTER_ROLE_ID": BOOSTER_ROLE_ID,
-    "CUSTOM_BOOSTER_ROLE_ID": CUSTOM_BOOSTER_ROLE_ID,
-    "INSTANCE_ID": str(uuid.uuid4())[:8],
-}
-
-print(f"[MAIN] Instance ID: {bot.MAIN_CONFIG['INSTANCE_ID']}")
-
-# ===== RUN (Render: Flask foreground, bot thread) =====
 if __name__ == "__main__":
-    _start_bot_thread()
+    # Flask em background
+    threading.Thread(
+        target=start_keep_alive,
+        daemon=True
+    ).start()
 
-    from keep_alive import app, serve_foreground
-    port = int(os.environ.get("PORT", 8080))
-    serve_foreground(app, port=port)
+    # BOT = PROCESSO PRINCIPAL
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("Encerrando bot…")
+    except Exception:
+        traceback.print_exc()
