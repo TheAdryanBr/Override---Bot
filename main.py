@@ -1,14 +1,16 @@
-# main.py — STABLE / SINGLE-LOGIN / RENDER SAFE
+# main.py — RENDER SAFE (Flask principal + bot em background)
+
 import os
 import sys
 import traceback
-import uuid
 import asyncio
 import logging
-import threading
+from threading import Thread
 
 import discord
 from discord.ext import commands
+
+from keep_alive import app, serve_foreground
 
 # ─────────────────────────────
 # LOGS
@@ -23,14 +25,12 @@ def _read_secret_file(paths):
     for p in paths:
         try:
             if os.path.isfile(p):
-                with open(p, "r") as f:
-                    s = f.read().strip()
-                    if s:
-                        return s
+                with open(p,"r") as f:
+                    s=f.read().strip()
+                    if s: return s
         except:
             pass
     return None
-
 
 TOKEN = (
     os.getenv("DISCORD_TOKEN")
@@ -45,7 +45,7 @@ TOKEN = (
 )
 
 if not TOKEN:
-    raise RuntimeError("❌ DISCORD_TOKEN não encontrado")
+    raise RuntimeError("❌ DISCORD_TOKEN não encontrado!")
 
 TOKEN = TOKEN.strip()
 if TOKEN.lower().startswith("bot "):
@@ -57,9 +57,9 @@ if TOKEN.lower().startswith("bot "):
 intents = discord.Intents.default()
 intents.message_content = True
 intents.messages = True
-intents.dm_messages = True
 intents.guilds = True
 intents.guild_messages = True
+intents.dm_messages = True
 intents.members = True
 intents.presences = True
 
@@ -83,7 +83,7 @@ COGS = [
 ]
 
 # ─────────────────────────────
-# READY (UMA VEZ)
+# READY
 # ─────────────────────────────
 _ready_once = False
 
@@ -94,25 +94,13 @@ async def on_ready():
         return
     _ready_once = True
 
-    await asyncio.sleep(5)
-
-    print(f"[LOGADO] {bot.user} está online")
+    print(f"[LOGADO] {bot.user} está online!")
     print("📦 Cogs carregados:")
     for name in bot.cogs:
         print(" -", name)
 
-    # Proteção de sync
-    if os.getenv("SYNC_COMMANDS") == "0":
-        try:
-            synced = await bot.tree.sync()
-            print(f"[SLASH] {len(synced)} comandos sincronizados")
-        except Exception as e:
-            print("[SLASH ERRO]", e)
-    else:
-        print("[SLASH] Sync ignorado")
-
 # ─────────────────────────────
-# LOAD COGS
+# CARREGAMENTO DOS COGS
 # ─────────────────────────────
 async def load_all_cogs():
     for cog in COGS:
@@ -125,34 +113,35 @@ async def load_all_cogs():
             traceback.print_exc()
 
 # ─────────────────────────────
-# FLASK KEEP ALIVE (THREAD)
+# TASK DO BOT
 # ─────────────────────────────
-def start_keep_alive():
-    try:
-        from keep_alive import app, serve_foreground
-        port = int(os.environ.get("PORT", 8080))
-        serve_foreground(app, port=port)
-    except Exception:
-        traceback.print_exc()
-
-# ─────────────────────────────
-# MAIN
-# ─────────────────────────────
-async def main():
+async def bot_task():
     await load_all_cogs()
-    await bot.start(TOKEN)
-
-if __name__ == "__main__":
-    # Flask em background
-    threading.Thread(
-        target=start_keep_alive,
-        daemon=True
-    ).start()
-
-    # BOT = PROCESSO PRINCIPAL
     try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("Encerrando bot…")
-    except Exception:
+        await bot.start(TOKEN)
+    except Exception as e:
+        print("❌ Bot terminou com erro:", e)
         traceback.print_exc()
+
+def schedule_bot():
+    loop = asyncio.get_event_loop()
+    loop.create_task(bot_task())
+
+# ─────────────────────────────
+# INÍCIO DO SERVIÇO
+# ─────────────────────────────
+if __name__ == "__main__":
+    # ─────────────── FLASK ───────────────
+    port = int(os.environ.get("PORT", 8080))
+    Thread(target=lambda: serve_foreground(app, port=port), daemon=True).start()
+    print(f"[FLASK] Servindo em porta {port}")
+
+    # ─────────── BOT EM BACKGROUND ───────────
+    print("[BOT] Programado para iniciar em background…")
+    schedule_bot()
+
+    # ─────────────── EVENT LOOP ───────────────
+    try:
+        asyncio.get_event_loop().run_forever()
+    except KeyboardInterrupt:
+        print("Encerrando…")
