@@ -1,4 +1,3 @@
-# cogs/ai_chat/ai_chat.py
 import asyncio
 import random
 
@@ -82,14 +81,6 @@ class AIChatCog(commands.Cog):
         if not state.should_respond:
             return
 
-        # evita intromissão na conversa de outro usuário
-        last_user = self.buffer.get_last_user_id()
-        if last_user and last_user != message.author.id and not message.mentions:
-            return
-
-        # ─────────────────────────
-        # AUTO-RECUSA SECA
-        # ─────────────────────────
         if should_auto_refuse(message.content):
             await message.channel.send(random.choice([
                 "Não.",
@@ -101,10 +92,7 @@ class AIChatCog(commands.Cog):
             ]))
             return
 
-        # ─────────────────────────
-        # BUFFER (forma compatível com MessageBuffer)
-        # ─────────────────────────
-        # corrigido: passar os 3 args esperados pelo MessageBuffer
+        # buffer correto
         self.buffer.add_user_message(
             author_id=message.author.id,
             author_name=message.author.display_name,
@@ -115,7 +103,7 @@ class AIChatCog(commands.Cog):
             return
 
         self.processing = True
-        await asyncio.sleep(random.uniform(0.8, 2.0))
+        await asyncio.sleep(random.uniform(0.8, 1.6))
 
         try:
             await self._generate_and_send(message.channel)
@@ -129,11 +117,10 @@ class AIChatCog(commands.Cog):
         if self.buffer.is_empty():
             return
 
-        # monta entries compatíveis com ai_prompt / engine
         entries = [
             {
                 "author_display": m.get("author_name", "user"),
-                "content": m["content"]
+                "content": m.get("content", "")
             }
             for m in self.buffer.get_messages()
             if m.get("role") == "user"
@@ -142,11 +129,10 @@ class AIChatCog(commands.Cog):
         if not entries:
             return
 
-        # Use engine.generate_response(entries) — a engine monta o prompt internamente.
         try:
             response = await self.engine.generate_response(entries)
-        except Exception:
-            # opcional: logar erro em self.engine.recent_error se quiser
+        except Exception as e:
+            print("[AI_CHAT] erro ao gerar resposta:", e)
             return
 
         if not response:
