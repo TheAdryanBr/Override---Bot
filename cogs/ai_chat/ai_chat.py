@@ -134,7 +134,7 @@ class AIChatCog(commands.Cog):
             return
 
         try:
-            response = await self.engine.generate_response(entries)
+            response = await self.engine.generate_response(prompt)
         except Exception:
             return
 
