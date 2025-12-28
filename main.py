@@ -120,7 +120,7 @@ async def on_ready():
         print(" -", name)
 
     # ===== SYNC CONTROLADO =====
-    if os.getenv("SYNC_COMMANDS") == "1":
+    if os.getenv("SYNC_COMMANDS") == "0":
         try:
             print("[SLASH] Sincronizando comandos...")
             synced = await bot.tree.sync()
