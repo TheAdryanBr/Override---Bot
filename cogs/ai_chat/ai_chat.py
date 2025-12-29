@@ -7,7 +7,6 @@ from discord.ext import commands
 from .ai_state import AIStateManager
 from .ai_engine import AIEngine
 from .message_buffer import MessageBuffer
-from .ai_prompt import build_prompt
 from utils import CHANNEL_MAIN, now_ts
 
 
@@ -44,6 +43,19 @@ def sanitize_response(text: str) -> str:
     return text
 
 
+def hard_style_cut(text: str) -> str:
+    if not text:
+        return text
+
+    # corta respostas longas demais
+    text = text.split("\n")[0]
+
+    if text.count(".") > 1:
+        text = text.split(".", 1)[0]
+
+    return text.strip()
+
+
 class AIChatCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -55,7 +67,7 @@ class AIChatCog(commands.Cog):
         )
 
         self.engine = AIEngine(
-            system_prompt="",
+            system_prompt="",  # o prompt base já está dentro da engine
             primary_models=["gpt-4o-mini"],
             fallback_models=[],
         )
@@ -77,10 +89,19 @@ class AIChatCog(commands.Cog):
             return
 
         state = self.state.evaluate(message, self.bot.user)
-
         if not state.should_respond:
             return
 
+        # silêncio intencional (override não responde sempre)
+        if random.random() < 0.12:
+            return
+
+        # evita se meter na conversa de outro usuário
+        last_user = self.buffer.get_last_user_id()
+        if last_user and last_user != message.author.id and not message.mentions:
+            return
+
+        # auto-recusa seca
         if should_auto_refuse(message.content):
             await message.channel.send(random.choice([
                 "Não.",
@@ -92,7 +113,7 @@ class AIChatCog(commands.Cog):
             ]))
             return
 
-        # buffer correto
+        # adiciona ao buffer
         self.buffer.add_user_message(
             author_id=message.author.id,
             author_name=message.author.display_name,
@@ -130,9 +151,9 @@ class AIChatCog(commands.Cog):
             return
 
         try:
-            prompt = build_prompt(entries)
-            response = await self.engine.generate_response(prompt)
-        except Exception:
+            # engine já monta o prompt internamente
+            response = await self.engine.generate_response(entries)
+        except Exception as e:
             print("[AI_CHAT] erro ao gerar resposta:", e)
             return
 
@@ -140,6 +161,7 @@ class AIChatCog(commands.Cog):
             return
 
         response = sanitize_response(response)
+        response = hard_style_cut(response)
 
         await channel.send(response)
 
