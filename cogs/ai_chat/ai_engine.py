@@ -93,11 +93,11 @@ class AIEngine:
     # ----------------------
 
     async def generate_response(self, entries: List[Dict[str, Any]]) -> str:
-    prompt = build_prompt(entries)
+        prompt = self.build_prompt(entries)
 
-    raw = await self.ask_with_fallback(prompt)
+        raw = await self.ask_with_fallback(prompt)
 
-    if not raw or not raw.strip():
-        return "Hm."
+        if not raw:
+            return "Agora não."
 
-    return self.final_clean(raw)
+        return self.final_clean(raw)
