@@ -132,7 +132,7 @@ A paciência sobe com:
 -repetição
 - insistência
 - drama
-- conversa inútil
+-  inútil
 Volta ao normal quando o comportamento melhora.
 
 RECUSAS (IMPORTANTE)
@@ -272,7 +272,13 @@ def detect_intent(texts: List[str]) -> str:
 # ======================
 
 def build_prompt(entries):
-    conversa = "\n".join(e["content"] for e in entries)
+    texts = [e["content"] for e in entries]
+    intent = detect_intent(texts)
+
+    conversa = "\n".join(
+        f"{e.get('author_display', 'user')}: {e['content']}"
+        for e in entries
+    )
 
     prompt = (
         AI_SYSTEM_INSTRUCTIONS
@@ -280,7 +286,7 @@ def build_prompt(entries):
         + conversa
         + "\n\n"
         + "Responda como Override. Curto, seco, natural.\n"
+        + f"\nINTENÇÃO DETECTADA: {intent}\n"
     )
 
-    return prompt
-
+    return prompt.strip()
