@@ -67,7 +67,6 @@ class AIChatCog(commands.Cog):
         )
 
         self.engine = AIEngine(
-            system_prompt="",  # o prompt base já está dentro da engine
             primary_models=["gpt-4o-mini"],
             fallback_models=[],
         )
