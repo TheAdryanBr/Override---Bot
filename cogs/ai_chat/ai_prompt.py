@@ -272,7 +272,7 @@ def detect_intent(texts: List[str]) -> str:
 # ======================
 
 def build_prompt(entries):
-    texts = [e["content"] for e in entries]
+    texts = [e["content"] for e in entries if e.get("content")]
     intent = detect_intent(texts)
 
     conversa = "\n".join(
@@ -285,8 +285,8 @@ def build_prompt(entries):
         + "\n\nCONVERSA:\n"
         + conversa
         + "\n\n"
+        + f"INTENÇÃO DETECTADA: {intent}\n"
         + "Responda como Override. Curto, seco, natural.\n"
-        + f"\nINTENÇÃO DETECTADA: {intent}\n"
     )
 
     return prompt.strip()
