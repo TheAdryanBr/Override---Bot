@@ -74,7 +74,7 @@ COGS = [
     "cogs.welcome",
     "cogs.voice_rooms",
     "cogs.background_traffic",
-    "cogs.platform_monitor",
+    # "cogs.platform_monitor",
     "cogs.freestuff_monitor",
     "cogs.controle_owner",
     "cogs.autorole",
