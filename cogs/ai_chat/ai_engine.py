@@ -4,31 +4,18 @@ from typing import List, Dict, Any, Optional
 
 from openai import OpenAI
 
-# ======================
-# CLIENTE OPENAI
-# ======================
-
 OPENAI_KEY = os.getenv("OPENAI_API_KEY")
+client_ai = OpenAI(api_key=OPENAI_KEY) if OPENAI_KEY else None
 
-client_ai = OpenAI(
-    api_key=OPENAI_KEY
-) if OPENAI_KEY else None
-
-
-# ======================
-# ENGINE (CÉREBRO)
-# ======================
 
 class AIEngine:
     def __init__(
         self,
-        system_prompt: str,
         primary_models: List[str],
         fallback_models: List[str],
         max_output_tokens: int = 180,
         temperature: float = 0.6,
     ):
-        self.system_prompt = system_prompt
         self.primary_models = primary_models
         self.fallback_models = fallback_models
         self.max_output_tokens = max_output_tokens
@@ -51,7 +38,7 @@ class AIEngine:
         return ordered
 
     # ----------------------
-    # Chamada OpenAI (thread)
+    # OpenAI call
     # ----------------------
 
     async def _call_openai(self, model: str, prompt: str) -> str:
@@ -75,7 +62,7 @@ class AIEngine:
         return text.strip()
 
     # ----------------------
-    # Fallback controlado
+    # Fallback
     # ----------------------
 
     async def ask_with_fallback(self, prompt: str) -> str:
@@ -97,43 +84,16 @@ class AIEngine:
 
     def final_clean(self, text: str) -> str:
         t = text.strip()
-
         if len(t) > 800:
             t = t[:800].rstrip() + "..."
-
         return t
-
-    # ----------------------
-    # Prompt builder
-    # ----------------------
-
-    def build_prompt(self, entries: List[Dict[str, Any]]) -> str:
-        texto_chat = "\n".join(
-            f"{e.get('author_display', 'user')}: {e.get('content', '')}"
-            for e in entries
-            if e.get("content")
-        )
-
-        if not texto_chat.strip():
-            texto_chat = "Usuário chamou você."
-
-        return (
-            self.system_prompt
-            + "\n\nCONVERSA:\n"
-            + texto_chat
-            + "\n\nResponda como Override. Curto, seco, natural.\n"
-        )
 
     # ----------------------
     # API FINAL
     # ----------------------
 
-    async def generate_response(self, entries: List[Dict[str, Any]]) -> str:
-        prompt = self.build_prompt(entries)
-
+    async def generate_response(self, prompt: str) -> str:
         raw = await self.ask_with_fallback(prompt)
-
         if not raw:
             return "Fala aí."
-
         return self.final_clean(raw)
