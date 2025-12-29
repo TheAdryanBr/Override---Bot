@@ -94,6 +94,8 @@ class AIEngine:
 
     async def generate_response(self, prompt: str) -> str:
         raw = await self.ask_with_fallback(prompt)
+        
         if not raw:
             return "Fala aí."
+            
         return self.final_clean(raw)
