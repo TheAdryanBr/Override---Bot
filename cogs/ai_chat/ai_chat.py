@@ -130,8 +130,9 @@ class AIChatCog(commands.Cog):
             return
 
         try:
-            response = await self.engine.generate_response(entries)
-        except Exception as e:
+            prompt = build_prompt(entries)
+            response = await self.engine.generate_response(prompt)
+        except Exception:
             print("[AI_CHAT] erro ao gerar resposta:", e)
             return
 
