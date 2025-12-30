@@ -40,8 +40,8 @@ class AIDecision:
                             reason="random_silence"
                         )
                         
-    # nova decisão: pedido de baixo esforço
-        if content:
+        # nova decisão: pedido de baixo esforço
+            if content:
             lowered = content.lower()
             for pattern in (
                 "faz pra mim", "pode fazer", "me ajuda",
