@@ -96,7 +96,7 @@ class AIChatCog(commands.Cog):
             return
 
         # evita se meter na conversa de outro usuário
-        last_user = self.buffer.get_last_user_id()
+        last_user = getattr(self.buffer, "get_last_user_id", lambda: None)()
         if last_user and last_user != message.author.id and not message.mentions:
             return
 
@@ -113,11 +113,16 @@ class AIChatCog(commands.Cog):
             return
 
         # adiciona ao buffer
-        self.buffer.add_user_message(
-            author_id=message.author.id,
-            author_name=message.author.display_name,
-            content=message.content,
-        )
+        # compatível com MessageBuffer (espera author_id, author_name, content)
+        try:
+            self.buffer.add_user_message(
+                author_id=message.author.id,
+                author_name=message.author.display_name,
+                content=message.content,
+            )
+        except Exception as e:
+            print("[AI_CHAT] erro ao adicionar ao buffer:", e)
+            return
 
         if self.processing:
             return
