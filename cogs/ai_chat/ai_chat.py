@@ -61,6 +61,15 @@ class AIChatCog(commands.Cog):
             return
 
         state = self.state.evaluate(message, self.bot.user)
+        
+        entries = [
+            {
+                "author_display": m["author_name"],
+                "content": m["content"],
+            }
+            for m in self.buffer.get_messages()
+            if m["role"] == "user"
+        ]
         decision = self.decision.should_respond(
             entries=entries,
             state=state
