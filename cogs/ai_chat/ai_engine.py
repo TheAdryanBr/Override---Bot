@@ -1,101 +1,72 @@
+# ai_engine.py
 import asyncio
 import os
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Optional
 
 from openai import OpenAI
-from .ai_prompt import build_prompt  # <<-- usa o builder do prompt aqui
+from .ai_prompt import build_prompt
+
 
 OPENAI_KEY = os.getenv("OPENAI_API_KEY")
-client_ai = OpenAI(api_key=OPENAI_KEY) if OPENAI_KEY else None
+client = OpenAI(api_key=OPENAI_KEY) if OPENAI_KEY else None
 
 
 class AIEngine:
     def __init__(
         self,
         primary_models: List[str],
-        fallback_models: List[str],
+        fallback_models: Optional[List[str]] = None,
         max_output_tokens: int = 180,
         temperature: float = 0.6,
     ):
         self.primary_models = primary_models
-        self.fallback_models = fallback_models
+        self.fallback_models = fallback_models or []
         self.max_output_tokens = max_output_tokens
         self.temperature = temperature
 
-        self.current_model_in_use: Optional[str] = None
-        self.recent_error: Optional[str] = None
+        self.current_model: Optional[str] = None
+        self.last_error: Optional[str] = None
 
-    # ----------------------
-    # Ordem dos modelos
-    # ----------------------
-    def choose_model_order(self) -> List[str]:
+    def _model_order(self) -> List[str]:
         seen = set()
-        ordered = []
+        order = []
         for m in self.primary_models + self.fallback_models:
             if m not in seen:
                 seen.add(m)
-                ordered.append(m)
-        return ordered
+                order.append(m)
+        return order
 
-    # ----------------------
-    # OpenAI call
-    # ----------------------
     async def _call_openai(self, model: str, prompt: str) -> str:
-        if not client_ai:
+        if not client:
             raise RuntimeError("OPENAI_API_KEY não configurada")
 
         def sync_call():
-            return client_ai.responses.create(
+            return client.responses.create(
                 model=model,
                 input=prompt,
                 max_output_tokens=self.max_output_tokens,
                 temperature=self.temperature,
             )
 
-        resp = await asyncio.to_thread(sync_call)
+        response = await asyncio.to_thread(sync_call)
+        text = getattr(response, "output_text", "").strip()
 
-        text = getattr(resp, "output_text", None)
-        if not text or not text.strip():
+        if not text:
             raise RuntimeError("Resposta vazia da OpenAI")
 
-        return text.strip()
+        return text
 
-    # ----------------------
-    # Fallback
-    # ----------------------
-    async def ask_with_fallback(self, prompt: str) -> str:
-        for model in self.choose_model_order():
+    async def generate_response(self, entries: List[Dict[str, str]]) -> str:
+        prompt = build_prompt(entries)
+
+        for model in self._model_order():
             try:
-                self.current_model_in_use = model
+                self.current_model = model
                 return await self._call_openai(model, prompt)
 
             except Exception as e:
-                self.recent_error = str(e)
-                print(f"[AI_ENGINE] falha no modelo {model}: {self.recent_error}")
+                self.last_error = str(e)
+                print(f"[AI_ENGINE] falha em {model}: {self.last_error}")
                 await asyncio.sleep(0.4)
 
         return "Agora não."
-
-    # ----------------------
-    # Limpeza final
-    # ----------------------
-    def final_clean(self, text: str) -> str:
-        t = text.strip()
-        if len(t) > 800:
-            t = t[:800].rstrip() + "..."
-        return t
-
-    # ----------------------
-# API FINAL
-# ----------------------
-async def generate_response(self, prompt: str) -> str:
-    try:
-        raw = await self.ask_with_fallback(prompt)
-    except Exception as e:
-        print("[AI_ENGINE] erro na chamada ao modelo:", e)
-        return "Agora não."
-
-    if not raw:
-        return "Agora não."
-
-    return self.final_clean(raw)
