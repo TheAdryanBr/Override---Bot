@@ -48,6 +48,7 @@ class AIChatCog(commands.Cog):
 
         self.engine = AIEngine(primary_models=["gpt-4o-mini"])
         self.buffer = MessageBuffer(max_messages=12)
+        self.decision = AIDecision()
 
         self.processing = False
         self.last_response_ts = 0.0
