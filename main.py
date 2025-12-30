@@ -94,7 +94,16 @@ async def on_ready():
         return
     _ready_once = True
 
-    print(f"[LOGADO] {bot.user} está online!")
+    print(f"[LOGADO] {bot.user} está online")
+
+    # inicia o Flask APÓS login
+    threading.Thread(
+        target=start_keep_alive,
+        daemon=True
+    ).start()
+
+    print("[KEEPALIVE] Flask iniciado após login")
+
     print("📦 Cogs carregados:")
     for name in bot.cogs:
         print(" -", name)
