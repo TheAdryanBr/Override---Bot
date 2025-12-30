@@ -3,6 +3,7 @@ import os
 from typing import List, Dict, Any, Optional
 
 from openai import OpenAI
+from .ai_prompt import build_prompt  # <<-- usa o builder do prompt aqui
 
 OPENAI_KEY = os.getenv("OPENAI_API_KEY")
 client_ai = OpenAI(api_key=OPENAI_KEY) if OPENAI_KEY else None
@@ -27,7 +28,6 @@ class AIEngine:
     # ----------------------
     # Ordem dos modelos
     # ----------------------
-
     def choose_model_order(self) -> List[str]:
         seen = set()
         ordered = []
@@ -40,7 +40,6 @@ class AIEngine:
     # ----------------------
     # OpenAI call
     # ----------------------
-
     async def _call_openai(self, model: str, prompt: str) -> str:
         if not client_ai:
             raise RuntimeError("OPENAI_API_KEY não configurada")
@@ -64,7 +63,6 @@ class AIEngine:
     # ----------------------
     # Fallback
     # ----------------------
-
     async def ask_with_fallback(self, prompt: str) -> str:
         for model in self.choose_model_order():
             try:
@@ -81,7 +79,6 @@ class AIEngine:
     # ----------------------
     # Limpeza final
     # ----------------------
-
     def final_clean(self, text: str) -> str:
         t = text.strip()
         if len(t) > 800:
@@ -91,11 +88,19 @@ class AIEngine:
     # ----------------------
     # API FINAL
     # ----------------------
-
     async def generate_response(self, entries: List[Dict[str, Any]]) -> str:
-        prompt = self.build_prompt(entries)
+        # usa o build_prompt do módulo ai_prompt (assim o prompt fica centralizado)
+        try:
+            prompt = build_prompt(entries)
+        except Exception as e:
+            print("[AI_ENGINE] erro ao montar prompt:", e)
+            return "Agora não."
 
-        raw = await self.ask_with_fallback(prompt)
+        try:
+            raw = await self.ask_with_fallback(prompt)
+        except Exception as e:
+            print("[AI_ENGINE] erro na chamada ao modelo:", e)
+            return "Agora não."
 
         if not raw:
             return "Agora não."
