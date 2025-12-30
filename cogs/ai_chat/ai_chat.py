@@ -6,6 +6,7 @@ from discord.ext import commands
 
 from .ai_state import AIStateManager
 from .ai_engine import AIEngine
+from .ai_prompt import build_prompt
 from .message_buffer import MessageBuffer
 from utils import CHANNEL_MAIN, now_ts
 
@@ -96,8 +97,9 @@ class AIChatCog(commands.Cog):
             return
 
         # evita se meter na conversa de outro usuário
-        last_user = getattr(self.buffer, "get_last_user_id", lambda: None)()
-        if last_user and last_user != message.author.id and not message.mentions:
+        last_user = None
+        if hasattr(self.buffer, "get_last_user_id"):
+            last_user = self.buffer.get_last_user_id()
             return
 
         # auto-recusa seca
