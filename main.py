@@ -1,12 +1,10 @@
-# main.py — RENDER SAFE (Flask principal + bot em background)
+# main.py — RENDER SAFE / FUTURE PROOF
 
 import os
-import sys
 import traceback
 import asyncio
 import logging
 import threading
-from threading import Thread
 
 import discord
 from discord.ext import commands
@@ -26,12 +24,14 @@ def _read_secret_file(paths):
     for p in paths:
         try:
             if os.path.isfile(p):
-                with open(p,"r") as f:
-                    s=f.read().strip()
-                    if s: return s
-        except:
+                with open(p, "r") as f:
+                    s = f.read().strip()
+                    if s:
+                        return s
+        except Exception:
             pass
     return None
+
 
 TOKEN = (
     os.getenv("DISCORD_TOKEN")
@@ -46,7 +46,7 @@ TOKEN = (
 )
 
 if not TOKEN:
-    raise RuntimeError("❌ DISCORD_TOKEN não encontrado!")
+    raise RuntimeError("❌ DISCORD_TOKEN não encontrado")
 
 TOKEN = TOKEN.strip()
 if TOKEN.lower().startswith("bot "):
@@ -57,12 +57,11 @@ if TOKEN.lower().startswith("bot "):
 # ─────────────────────────────
 intents = discord.Intents.default()
 intents.message_content = True
-intents.messages = True
-intents.guilds = True
-intents.guild_messages = True
-intents.dm_messages = True
 intents.members = True
 intents.presences = True
+intents.guilds = True
+intents.messages = True
+intents.dm_messages = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -86,31 +85,15 @@ COGS = [
 # ─────────────────────────────
 # READY
 # ─────────────────────────────
-_ready_once = False
-
 @bot.event
 async def on_ready():
-    global _ready_once
-    if _ready_once:
-        return
-    _ready_once = True
-
     print(f"[LOGADO] {bot.user} está online")
-
-    # inicia o Flask APÓS login
-    threading.Thread(
-        target=start_keep_alive,
-        daemon=True
-    ).start()
-
-    print("[KEEPALIVE] Flask iniciado após login")
-
     print("📦 Cogs carregados:")
     for name in bot.cogs:
         print(" -", name)
 
 # ─────────────────────────────
-# CARREGAMENTO DOS COGS
+# LOAD COGS
 # ─────────────────────────────
 async def load_all_cogs():
     for cog in COGS:
@@ -118,40 +101,33 @@ async def load_all_cogs():
             print(f"[DEBUG] Carregando {cog}")
             await bot.load_extension(cog)
             print(f"[COG] OK: {cog}")
-        except Exception as e:
+        except Exception:
             print(f"[COG ERRO] {cog}")
             traceback.print_exc()
 
 # ─────────────────────────────
-# TASK DO BOT
+# BOT MAIN
 # ─────────────────────────────
-async def bot_task():
+async def main():
     await load_all_cogs()
-    try:
-        await bot.start(TOKEN)
-    except Exception as e:
-        print("❌ Bot terminou com erro:", e)
-        traceback.print_exc()
-
-def schedule_bot():
-    loop = asyncio.get_event_loop()
-    loop.create_task(bot_task())
+    await bot.start(TOKEN)
 
 # ─────────────────────────────
-# INÍCIO DO SERVIÇO
+# ENTRYPOINT
 # ─────────────────────────────
 if __name__ == "__main__":
-    # ─────────────── FLASK ───────────────
-    port = int(os.environ.get("PORT", 8080))
-    Thread(target=lambda: serve_foreground(app, port=port), daemon=True).start()
+    # Flask (Render keep-alive)
+    port = int(os.environ.get("PORT", 10000))
+    threading.Thread(
+        target=lambda: serve_foreground(app, port=port),
+        daemon=True
+    ).start()
     print(f"[FLASK] Servindo em porta {port}")
 
-    # ─────────── BOT EM BACKGROUND ───────────
-    print("[BOT] Programado para iniciar em background…")
-    schedule_bot()
-
-    # ─────────────── EVENT LOOP ───────────────
+    # Discord bot
     try:
-        asyncio.get_event_loop().run_forever()
+        asyncio.run(main())
     except KeyboardInterrupt:
         print("Encerrando…")
+    except Exception:
+        traceback.print_exc()
