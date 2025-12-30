@@ -70,16 +70,16 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # ─────────────────────────────
 COGS = [
     # "cogs.boosters",
-    "cogs.denuncias",
-    "cogs.welcome",
-    "cogs.voice_rooms",
-    "cogs.background_traffic",
+    # "cogs.denuncias",
+    # "cogs.welcome",
+    # "cogs.voice_rooms",
+    # "cogs.background_traffic",
     # "cogs.platform_monitor",
     # "cogs.freestuff_monitor",
-    "cogs.controle_owner",
+    # "cogs.controle_owner",
     # "cogs.autorole",
     "cogs.ai_chat",
-    "cogs.embed",
+    # "cogs.embed",
 ]
 
 # ─────────────────────────────
