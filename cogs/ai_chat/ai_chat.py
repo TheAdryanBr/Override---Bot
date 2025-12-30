@@ -7,6 +7,7 @@ from discord.ext import commands
 from .ai_state import AIStateManager
 from .ai_engine import AIEngine
 from .message_buffer import MessageBuffer
+from .ai_decision import AIDecision
 from utils import CHANNEL_MAIN, now_ts
 
 
