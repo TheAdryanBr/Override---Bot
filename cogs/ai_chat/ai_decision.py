@@ -1,26 +1,42 @@
 # ai_decision.py
 from typing import List, Dict, Optional
+from dataclasses import dataclass
+
+@dataclass
+class DecisionResult:
+    should_respond: bool
+    reason: str = ""
 
 class AIDecision:
     def __init__(self):
         pass
 
     def should_respond(
-        self,
-        entries: List[Dict],
-        state
-    ) -> bool:
-        """
-        Decide se a IA deve responder ou não.
-        """
-        if not entries:
-            return False
+    self,
+    entries: List[Dict],
+    state
+) -> DecisionResult:
+    """
+    Decide se a IA deve responder ou não.
+    Retorna um DecisionResult (sem mudar comportamento).
+    """
+    if not entries:
+        return DecisionResult(
+            should_respond=False,
+            reason="no_entries"
+        )
 
-        # regra base: o ai_state já validou
-        if not state.should_respond:
-            return False
+    # regra base: o ai_state já validou
+    if not state.should_respond:
+        return DecisionResult(
+            should_respond=False,
+            reason="state_blocked"
+        )
 
-        return True
+    return DecisionResult(
+        should_respond=True,
+        reason="allowed"
+    )
 
     def force_short_reply(self, entries: List[Dict]) -> bool:
         """
