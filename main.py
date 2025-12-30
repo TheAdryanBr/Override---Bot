@@ -5,6 +5,7 @@ import sys
 import traceback
 import asyncio
 import logging
+import threading
 from threading import Thread
 
 import discord
