@@ -12,40 +12,51 @@ class DecisionResult:
 class AIDecision:
     def __init__(self, random_silence_chance: float = 0.12):
         self.random_silence_chance = random_silence_chance
-
-    def should_respond(
-        self,
-        entries: List[Dict],
-        state
-    ) -> DecisionResult:
-        """
-        Decide se a IA deve responder ou não.
-        Retorna DecisionResult sem mudar o comportamento atual.
-        """
-
-        if not entries:
-            return DecisionResult(
-                should_respond=False,
-                reason="no_entries"
-            )
-
-        if not state.should_respond:
-            return DecisionResult(
-                should_respond=False,
-                reason="state_blocked"
-            )
-
-        # regra de silêncio aleatório (antes no cog)
-        if random.random() < self.random_silence_chance:
-            return DecisionResult(
-                should_respond=False,
-                reason="random_silence"
-            )
-
-        return DecisionResult(
-            should_respond=True,
-            reason="allowed"
-        )
+        
+        def should_respond(
+            self,
+            entries: List[Dict],
+            state,
+            content: str | None = None
+        ) -> DecisionResult:
+            """
+            Decide se a IA deve responder ou não.
+            """
+            if not entries:
+                return DecisionResult(
+                    should_respond=False,
+                    reason="no_entries"
+                )
+                
+                if not state.should_respond:
+                    return DecisionResult(
+                        should_respond=False,
+                        reason="state_blocked"
+                    )
+                    
+                    if random.random() < self.random_silence_chance:
+                        return DecisionResult(
+                            should_respond=False,
+                            reason="random_silence"
+                        )
+                        
+    # nova decisão: pedido de baixo esforço
+        if content:
+            lowered = content.lower()
+            for pattern in (
+                "faz pra mim", "pode fazer", "me ajuda",
+                "cria um", "monta um", "faz ai"
+            ):
+                if pattern in lowered:
+                    return DecisionResult(
+                        should_respond=False,
+                        reason="auto_refuse"
+                    )
+                    
+                    return DecisionResult(
+                        should_respond=True,
+                        reason="allowed"
+                    )
 
     def force_short_reply(self, entries: List[Dict]) -> bool:
         """
