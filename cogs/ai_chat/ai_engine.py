@@ -86,23 +86,16 @@ class AIEngine:
         return t
 
     # ----------------------
-    # API FINAL
-    # ----------------------
-    async def generate_response(self, entries: List[Dict[str, Any]]) -> str:
-        # usa o build_prompt do módulo ai_prompt (assim o prompt fica centralizado)
-        try:
-            prompt = build_prompt(entries)
-        except Exception as e:
-            print("[AI_ENGINE] erro ao montar prompt:", e)
-            return "Agora não."
+# API FINAL
+# ----------------------
+async def generate_response(self, prompt: str) -> str:
+    try:
+        raw = await self.ask_with_fallback(prompt)
+    except Exception as e:
+        print("[AI_ENGINE] erro na chamada ao modelo:", e)
+        return "Agora não."
 
-        try:
-            raw = await self.ask_with_fallback(prompt)
-        except Exception as e:
-            print("[AI_ENGINE] erro na chamada ao modelo:", e)
-            return "Agora não."
+    if not raw:
+        return "Agora não."
 
-        if not raw:
-            return "Agora não."
-
-        return self.final_clean(raw)
+    return self.final_clean(raw)
