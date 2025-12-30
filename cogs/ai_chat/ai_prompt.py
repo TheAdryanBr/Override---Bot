@@ -1,9 +1,6 @@
 # ai_prompt.py
-from typing import List, Dict, Any
+from typing import List, Dict
 
-# ======================
-# PROMPT BASE (NÃO ALTERADO)
-# ======================
 
 AI_SYSTEM_INSTRUCTIONS = r'''
 As regras abaixo são obrigatórias.
@@ -244,10 +241,6 @@ Em outros canais, responde só quando marcado por um ADM
 '''.strip()
 
 
-# ======================
-# DETECÇÃO DE INTENÇÃO
-# ======================
-
 def detect_intent(texts: List[str]) -> str:
     joined = " ".join(texts).lower()
 
@@ -267,11 +260,7 @@ def detect_intent(texts: List[str]) -> str:
     return chosen if score[chosen] > 0 else "casual"
 
 
-# ======================
-# MONTAGEM DO PROMPT FINAL
-# ======================
-
-def build_prompt(entries):
+def build_prompt(entries: List[Dict[str, str]]) -> str:
     texts = [e["content"] for e in entries if e.get("content")]
     intent = detect_intent(texts)
 
