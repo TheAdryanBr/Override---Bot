@@ -69,7 +69,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # COGS
 # ─────────────────────────────
 COGS = [
-    "cogs.boosters",
+    # "cogs.boosters",
     "cogs.denuncias",
     "cogs.welcome",
     "cogs.voice_rooms",
