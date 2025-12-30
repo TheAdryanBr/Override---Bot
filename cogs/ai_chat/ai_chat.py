@@ -61,7 +61,11 @@ class AIChatCog(commands.Cog):
             return
 
         state = self.state.evaluate(message, self.bot.user)
-        if not state.should_respond:
+        decision = self.decision.should_respond(
+            entries=entries,
+            state=state
+        )
+        if not decision.should_respond:
             return
 
         if random.random() < 0.12:
