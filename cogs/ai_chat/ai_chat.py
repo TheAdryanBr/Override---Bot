@@ -77,9 +77,6 @@ class AIChatCog(commands.Cog):
         if not decision.should_respond:
             return
 
-        if random.random() < 0.12:
-            return
-
         if should_auto_refuse(message.content):
             await message.channel.send(random.choice([
                 "Não.", "Agora não.", "Nop.", "Sai fora."
