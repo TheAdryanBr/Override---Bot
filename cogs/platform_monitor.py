@@ -1,127 +1,230 @@
-# cogs/platform_monitor.py
 import asyncio
-import discord
-from discord.ext import commands, tasks
-from datetime import datetime, time
+import logging
+from datetime import datetime, timezone
+from typing import Optional
+
 import aiohttp
+import discord
+from discord.ext import commands
+import re
+import json
 
-# -------- CONFIGS --------
-PLATFORM_CHANNEL_ID = 1214687236331667497     # Canal onde será enviado
-MENTION_ROLE_ID = 1254470641944494131        # Cargo para mencionar
-
-USERNAME_TIKTOK = "theadryanbr"
-USERNAME_YOUTUBE = "TheAdryanBr"
-USERNAME_TWITCH = "theadryanbr"
-
-CHECK_INTERVAL = 60  # segundos
+log = logging.getLogger("platform_monitor")
 
 
-# ====== IMPORTS DAS FUNÇÕES DE SCRAPING ======
-from platforms.tiktok import check_tiktok_live
-from platforms.youtube import check_youtube_live
-from platforms.twitch import check_twitch_live
+# =========================================================
+# 1️⃣ MODELO DE DADOS
+# =========================================================
 
+class LiveData:
+    def __init__(self, username: str, title: str, thumbnail: Optional[str],
+                 profile_image: Optional[str], game: Optional[str], started_at: datetime):
+        self.username = username
+        self.title = title
+        self.thumbnail = thumbnail
+        self.profile_image = profile_image
+        self.game = game
+        self.started_at = started_at
+
+
+# =========================================================
+# 2️⃣ GERENCIADOR DE ESTADO
+# =========================================================
+
+class LiveStateManager:
+    def __init__(self):
+        self.is_online = False
+        self.embed_sent = False
+        self.current_live_id: Optional[str] = None
+
+    def mark_online(self, live_id: str):
+        if self.current_live_id != live_id:
+            log.info("[State] Nova live detectada")
+            self.current_live_id = live_id
+            self.embed_sent = False
+        self.is_online = True
+
+    def mark_offline(self):
+        log.info("[State] Live finalizada")
+        self.is_online = False
+        self.embed_sent = False
+        self.current_live_id = None
+
+    def can_send_embed(self) -> bool:
+        return self.is_online and not self.embed_sent
+
+    def mark_embed_sent(self):
+        self.embed_sent = True
+        log.info("[State] Embed marcado como enviado")
+
+
+# =========================================================
+# 3️⃣ COLETOR REAL
+# =========================================================
+
+HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/json",
+    "Referer": "https://www.tiktok.com/",
+}
+
+
+class LiveDataCollector:
+    async def collect(self, username: str) -> Optional[LiveData]:
+        # 1️⃣ Tentativa via endpoint oficial
+        url = f"https://www.tiktok.com/api/user/detail/?uniqueId={username}"
+        async with aiohttp.ClientSession(headers=HEADERS) as session:
+            try:
+                async with session.get(url) as resp:
+                    text = await resp.text()
+                    if not text.startswith("{"):
+                        log.warning("[Collector] Resposta não JSON")
+                        return None
+                    data = json.loads(text)
+            except Exception as e:
+                log.exception(f"[Collector] Falha ao pegar endpoint: {e}")
+                return None
+
+        user = data.get("userInfo", {}).get("user")
+        if not user:
+            log.warning("[Collector] User info não encontrada")
+            return None
+
+        room_id = user.get("roomId")
+        if not room_id:
+            log.warning("[Collector] Usuário offline")
+            return None
+
+        title = user.get("liveRoom", {}).get("title") or "🔴 LIVE NO TIKTOK"
+        thumbnail = user.get("liveRoom", {}).get("coverUrl")
+        profile_image = user.get("avatarLarger")
+        game = user.get("liveRoom", {}).get("gameName")
+
+        started_at = datetime.now(timezone.utc)
+
+        return LiveData(
+            username=username,
+            title=title,
+            thumbnail=thumbnail,
+            profile_image=profile_image,
+            game=game,
+            started_at=started_at
+        )
+
+
+# =========================================================
+# 4️⃣ BUILDER DE EMBED
+# =========================================================
+
+class EmbedBuilder:
+    def build(self, data: LiveData) -> discord.Embed:
+        embed = discord.Embed(
+            title=data.title,
+            description=f"@{data.username}",
+            color=discord.Color.red(),
+            timestamp=data.started_at
+        )
+
+        if data.game:
+            embed.add_field(name="🎮 Jogo", value=data.game, inline=False)
+
+        if data.profile_image:
+            embed.set_author(name=data.username, icon_url=data.profile_image)
+
+        if data.thumbnail:
+            embed.set_image(url=data.thumbnail)
+
+        embed.set_footer(text="YouTube: 🔴 Offline | Twitch: 🔴 Offline")
+
+        return embed
+
+
+# =========================================================
+# 5️⃣ DISPATCHER
+# =========================================================
+
+class EmbedDispatcher:
+    def __init__(self, bot: commands.Bot, channel_id: int, state: LiveStateManager):
+        self.bot = bot
+        self.channel_id = channel_id
+        self.state = state
+
+    async def dispatch(self, embed: discord.Embed):
+        if not self.state.can_send_embed():
+            log.warning("[Dispatcher] Embed ignorado (já enviado ou offline)")
+            return
+
+        channel = self.bot.get_channel(self.channel_id)
+        if not channel:
+            log.error("[Dispatcher] Canal não encontrado")
+            return
+
+        await channel.send(embed=embed)
+        self.state.mark_embed_sent()
+
+
+# =========================================================
+# 6️⃣ COG PRINCIPAL
+# =========================================================
 
 class PlatformMonitor(commands.Cog):
-    def __init__(self, bot):
+    def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.was_live = False
-        self.monitor_task.start()
 
-    # --------------------------------------------------------
-    # Horário permitido
-    # --------------------------------------------------------
-    def is_allowed_time(self):
-        now = datetime.now().time()
-        start1 = time(12, 0)
-        end1 = time(15, 0)
+        self.username = "theadryanbr"
+        self.channel_id = 1214687236331667497
 
-        start2 = time(20, 0)
-        end2 = time(23, 59)
+        self.state = LiveStateManager()
+        self.collector = LiveDataCollector()
+        self.builder = EmbedBuilder()
+        self.dispatcher = EmbedDispatcher(bot, self.channel_id, self.state)
 
-        return (start1 <= now <= end1) or (start2 <= now <= end2)
+        self._dispatcher_task: Optional[asyncio.Task] = None
 
-    # --------------------------------------------------------
-    # Loop principal de monitoramento
-    # --------------------------------------------------------
-    @tasks.loop(seconds=CHECK_INTERVAL)
-    async def monitor_task(self):
-        # só monitora no horário
-        if not self.is_allowed_time():
-            self.was_live = False
-            return
+        log.info("[PlatformMonitor] Inicializado")
 
-        # verificar tiktok primeiro
-        tiktok = await check_tiktok_live(USERNAME_TIKTOK)
+    async def cog_load(self):
+        log.info("[PlatformMonitor] Dispatcher iniciado")
+        self._dispatcher_task = asyncio.create_task(self.live_dispatch_loop())
 
-        if not tiktok:
-            # está OFFLINE → resetar status
-            self.was_live = False
-            return
+    async def cog_unload(self):
+        if self._dispatcher_task:
+            self._dispatcher_task.cancel()
+            log.info("[PlatformMonitor] Dispatcher cancelado")
 
-        # se já notificou, não envia novamente
-        if self.was_live:
-            return
-
-        # está AO VIVO pela primeira vez no horário
-        youtube = await check_youtube_live(USERNAME_YOUTUBE)
-        twitch = await check_twitch_live(USERNAME_TWITCH)
-
-        await self.send_live_embed(tiktok, youtube, twitch)
-
-        # marcar como “já notificado”
-        self.was_live = True
-
-    # --------------------------------------------------------
-    # Envio do embed
-    # --------------------------------------------------------
-    async def send_live_embed(self, tiktok, youtube, twitch):
-        channel = self.bot.get_channel(PLATFORM_CHANNEL_ID)
-        if not channel:
-            return
-
-        role = channel.guild.get_role(MENTION_ROLE_ID)
-
-        # status extras
-        yt_status = "🔴 AO VIVO" if youtube else "⚫ Offline"
-        tw_status = "🔴 AO VIVO" if twitch else "⚫ Offline"
-
-        embed = discord.Embed(
-            title=f"🔴 {tiktok['title']}",
-            description=f"**Clique para assistir:**\n{tiktok['url']}",
-            color=discord.Color.red()
-        )
-        embed.add_field(name="YouTube", value=yt_status, inline=True)
-        embed.add_field(name="Twitch", value=tw_status, inline=True)
-        embed.set_image(url=tiktok["cover"])
-
-        mention = role.mention if role else ""
-
-        await channel.send(content=mention, embed=embed)
-
-    # --------------------------------------------------------
-    # Teste manual
-    # --------------------------------------------------------
-    @commands.command(name="testlive")
-    async def testlive(self, ctx):
-        youtube = {"live": True}
-        twitch = {"live": True}
-        fake_tiktok = {
-            "title": "🔴 Teste de Live",
-            "url": "https://www.tiktok.com/@theadryanbr/live",
-            "cover": "https://p16-sign-va.tiktokcdn.com/tos-maliva-avt-0068/fake.jpg"
-        }
-
-        await self.send_live_embed(fake_tiktok, youtube, twitch)
-        await ctx.send("Embed de teste enviado!", delete_after=8)
-
-    # --------------------------------------------------------
-    # Before Loop
-    # --------------------------------------------------------
-    @monitor_task.before_loop
-    async def before_loop(self):
+    async def live_dispatch_loop(self):
         await self.bot.wait_until_ready()
+        log.info("[PlatformMonitor] Dispatcher em execução")
+
+        while not self.bot.is_closed():
+            try:
+                if self.state.can_send_embed():
+                    data = await self.collector.collect(self.username)
+                    if data:
+                        embed = self.builder.build(data)
+                        await self.dispatcher.dispatch(embed)
+                await asyncio.sleep(10)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                log.exception(f"[Dispatcher] Erro inesperado: {e}")
+                await asyncio.sleep(15)
+
+    # 🔌 HOOKS PÚBLICOS — CHAMAR DO WS
+    def on_live_online(self, live_id: str):
+        self.state.mark_online(live_id)
+
+    def on_live_offline(self):
+        self.state.mark_offline()
 
 
-async def setup(bot):
+# =========================================================
+# 7️⃣ SETUP
+# =========================================================
+
+async def setup(bot: commands.Bot):
     await bot.add_cog(PlatformMonitor(bot))

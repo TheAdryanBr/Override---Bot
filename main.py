@@ -81,6 +81,7 @@ COGS = [
     "cogs.controle_owner",
     "cogs.autorole",
     "cogs.embed",
+    "cogs.reload_cogs",
     "cogs.ai_chat",
 ]
 

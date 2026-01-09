@@ -1,7 +1,4 @@
-# ai_state.py
 import time
-from typing import Optional
-
 
 CONVERSATION_TIMEOUT = 120  # segundos
 
@@ -49,13 +46,15 @@ class AIStateManager:
         mentioned = bot_user in message.mentions
         in_conversation = user_id in self.active_conversations
 
+        # 🔥 admin sempre fura tudo
         if is_admin and mentioned:
             self._activate(user_id)
             return AIState(True, "admin_mention", True)
 
-        if mentioned and not in_conversation:
+        # 🔥 menção direta SEMPRE responde (override implícito)
+        if mentioned:
             self._activate(user_id)
-            return AIState(True, "user_mention", False)
+            return AIState(True, "direct_mention", True)
 
         if in_conversation:
             self._touch(user_id)

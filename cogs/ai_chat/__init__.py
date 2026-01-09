@@ -1,5 +1,4 @@
-from .ai_chat import AIChatCog
+from .ai_chat import AIChat
 
 async def setup(bot):
-    from .ai_chat import AIChatCog
-    await bot.add_cog(AIChatCog(bot))
+    await bot.add_cog(AIChat(bot))

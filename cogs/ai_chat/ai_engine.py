@@ -1,4 +1,3 @@
-# ai_engine.py
 import asyncio
 import os
 from typing import List, Dict, Optional
@@ -16,8 +15,8 @@ class AIEngine:
         self,
         primary_models: List[str],
         fallback_models: Optional[List[str]] = None,
-        max_output_tokens: int = 180,
-        temperature: float = 0.6,
+        max_output_tokens: int = 220,
+        temperature: float = 0.55,
     ):
         self.primary_models = primary_models
         self.fallback_models = fallback_models or []
@@ -49,12 +48,14 @@ class AIEngine:
             )
 
         response = await asyncio.to_thread(sync_call)
-        text = getattr(response, "output_text", "").strip()
 
-        if not text:
+        # ✅ FORMA CORRETA
+        text = response.output_text
+
+        if not text or not text.strip():
             raise RuntimeError("Resposta vazia da OpenAI")
 
-        return text
+        return text.strip()
 
     async def generate_response(self, entries: List[Dict[str, str]]) -> str:
         prompt = build_prompt(entries)
