@@ -1,0 +1,72 @@
+{
+  "1213316038805164093": {
+    "counters": [
+      {
+        "channel_id": 1464001032789950567,
+        "mode": "role",
+        "name_format": "Lobby: {count}",
+        "role_id": 1213324989202309220
+      },
+      {
+        "channel_id": 1464009157324836987,
+        "mode": "role",
+        "name_format": "lobby: {count}",
+        "role_id": 1213324989202309220
+      },
+      {
+        "channel_id": 1464010022194381035,
+        "mode": "role",
+        "name_format": "bots: {count}",
+        "role_id": 1213324989202309220
+      },
+      {
+        "channel_id": 1464010343645708423,
+        "mode": "role",
+        "name_format": "bots {count}",
+        "role_id": 1213323968594059274
+      },
+      {
+        "channel_id": 1464130642974347274,
+        "mode": "role",
+        "name_format": "𝐋𝐨𝐛𝐛𝐲 ꞉ {count}",
+        "role_id": 1213324989202309220
+      },
+      {
+        "channel_id": 1464132091511050294,
+        "mode": "all",
+        "name_format": "𝐀𝐥𝐥 𝐌𝐞𝐦𝐛𝐞𝐫𝐬 ꞉ {count}",
+        "role_id": 0
+      },
+      {
+        "channel_id": 1464132093331116065,
+        "mode": "humans",
+        "name_format": "𝐌𝐞𝐦𝐛𝐞𝐫𝐬 ꞉ {count}",
+        "role_id": 0
+      },
+      {
+        "channel_id": 1464132094635806751,
+        "mode": "bots",
+        "name_format": "𝐁𝐨𝐭𝐬 ꞉ {count}",
+        "role_id": 0
+      },
+      {
+        "channel_id": 1464132093339766967,
+        "mode": "all",
+        "name_format": "𝐀𝐥𝐥 𝐌𝐞𝐦𝐛𝐞𝐫𝐬 ꞉ {count}",
+        "role_id": 0
+      },
+      {
+        "channel_id": 1464132094782345356,
+        "mode": "humans",
+        "name_format": "✧ 𝐋𝐨𝐛𝐛𝐲 ꞉ {count}",
+        "role_id": 0
+      },
+      {
+        "channel_id": 1464132096619708470,
+        "mode": "bots",
+        "name_format": "✧ 𝐁𝐨𝐭𝐬 ꞉ {count}",
+        "role_id": 0
+      }
+    ]
+  }
+}
